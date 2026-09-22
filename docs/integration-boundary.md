@@ -93,12 +93,61 @@ entry 가 없는 server 도 숨기지 않는다: display_name = technical name(�
 description(없으면 빈 값), category = `기타`, organization = 빈 값.
 technical name 은 Gateway 가 group 정의에 안 걸린 server 에 만드는 fallback group(id = server_id)의 name 만 쓴다.
 
-### 등록 미리보기 (여전히 mock)
+## 도구함 (toolbox) — 기존 MCP 의 사용자 selection
 
-`inspect` 는 mode 와 무관하게 mock 이다. 향후 후보는 Gateway `POST /api/admin/mcp-servers/test`
-(ADMIN, body = server 정의 `{id, type: mcp-streamable-http|rest, url, name?, description?, headers?, timeoutMs?}`,
-응답 `{ok, server, toolCount, tools, error?}`, 실패 시 422). server 정의를 저장하지 않고 tools/list 만 해 본다. Track A-2 에서 다룬다.
-Portal 은 사용자가 입력한 endpoint 를 직접 부르지 않는다.
+**도구함 등록 = 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것.** 신규 MCP server 를 시스템에 추가하는 것이 아니다.
+
+`api/app/clients/selection.py` · `api/app/routes/toolbox.py`. Gateway 의 기존 selection API 만 쓴다.
+
+| Gateway | 권한 | 내용 |
+|---|---|---|
+| `GET /api/me/mcp-selections` | ANYONE | `{groupIds, serverIds, toolRefs}` (정규화된 값) |
+| `PUT /api/me/mcp-selections` | ANYONE | body strict `{groupIds?, toolRefs?, serverIds?}` → 정규화된 값을 저장하고 돌려줌 |
+
+- `groupIds`: market tool-group. 저장되고, 정규화 때 그 group 의 toolRefs 로 펼쳐진다.
+- `toolRefs`: 실행 권한의 실제 범위. `<serverId>/<tool>` 또는 `<serverId>/*`. Executor 는 `<serverId>/*` 를 server 전체로 본다.
+- `serverIds`: toolRefs 에서 뽑은 파생 값. 입력으로는 legacy (groupIds · toolRefs 가 둘 다 비었을 때만 `<id>/*` 로 바뀜).
+
+Portal 의 규칙:
+
+| 동작 | Gateway 에 보내는 것 |
+|---|---|
+| 등록 | 지금 selection 그대로 + `toolRefs` 에 `<serverId>/*` 하나 |
+| 해제 | 그 server 의 ref 전부 제거 + 그 server 를 담은 group id 만 제거. 다른 group · ref 는 그대로 |
+| 등록됨 판정 | 정규화된 `toolRefs` 에 `<serverId>/*` 가 있다 |
+
+multi-server group (`route-accessibility → otp-router, r5-server`): 등록은 group 을 건드리지 않으므로 다른 server 를 끌어오지 않는다.
+해제 때 그 group 을 남기면 Gateway 가 빠진 server 를 다시 펼치므로 group id 는 빼지만, 이미 펼쳐져 저장된 다른 server 의
+ref (`r5-server/*`) 는 남아 범위가 유지된다. 한 server 의 일부 tool 만 고른 상태는 「등록됨」이 아니며, 해제하면 그 일부도 빠진다.
+
+주의: ASAP-web 의 MCP market 화면은 `{groupIds}` 만 PUT 한다. 같은 사용자가 거기서 저장하면 Portal 이 넣은 `<serverId>/*` 는 사라진다.
+
+### 사용자 식별
+
+로그인 사용자는 Gateway 가 JWT `sub` 로, 그 밖은 guest cookie `asap_mcp_guest` (UUID v4, HttpOnly, SameSite=Lax, Path=/, 1년) 로 찾는다.
+Portal BFF 는 Gateway guest id 를 자기 cookie `kem_gateway_guest` (HttpOnly, SameSite=Lax, Path=/api, 1년) 에 담고,
+Gateway 를 부를 때만 `Cookie: asap_mcp_guest=<id>` 로 보낸다. 처음 온 브라우저는 Gateway 가 발급한 Set-Cookie 에서 id 를 읽어 담는다.
+id 값은 JSON · 로그에 싣지 않는다. Authorization 은 보내지 않는다 (로그인 연동은 아직 없음).
+
+### 실패
+
+Gateway 실패는 502 `{"detail": "Gateway 에서 MCP 정보를 가져오지 못했습니다."}`, Gateway 가 PUT 을 반영하지 않으면 409.
+mock 으로 넘어가지 않고, 성공으로 가정하지 않는다. mock mode 는 process-local selection 이다.
+
+### 채팅에 적용되는 경로 (read-only 확인)
+
+Gateway proxy (`/api/orchestrator/*`, `/api/mcp/*`) 는 요청자의 selection 을 `X-User-MCP-Servers` · `X-User-MCP-Tools` ·
+`X-User-MCP-Groups` header 로 붙여 downstream 에 넘긴다. ASAP-orchestrator 는 이 header 로 실행 범위를 정하고,
+Gateway `POST /api/tools/execute` 는 명시 `user_context` 가 없으면 요청자의 selection 으로 `selected_mcp_tool_refs` 를 검사한다.
+**지금 8000 번의 agentic_ai 는 이 header 를 읽지 않고 고정 `USER_CONTEXT` 를 `user_context` 로 보낸다.** 그래서 도구함 selection 은
+KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 채팅의 tool 범위는 바꾸지 않는다.
+또 Portal 의 guest(`kem_gateway_guest`) 와 ASAP-web 의 guest cookie 는 서로 다른 사용자다.
+
+## Future backlog: 신규 MCP server onboarding
+
+신규 endpoint 를 KRRI 시스템에 등록하는 것은 도구함과 다른 기능이며 지금 범위가 아니다. 후보 Gateway API 는
+`POST /api/admin/mcp-servers/test` (ADMIN JWT, body `{id, type, url, name?, description?, headers?, timeoutMs?}` →
+`{ok, server, toolCount, tools, error?}`) 와 `POST /api/admin/mcp-servers` 다. Portal 에 ADMIN credential 을 둘지 정한 뒤 다룬다.
 
 ## Browser → BFF
 

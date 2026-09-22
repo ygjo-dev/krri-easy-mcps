@@ -3,8 +3,8 @@
 KRRI 가 제공하는 MCP 서버를 찾아보고, 상세 정보와 Tool 을 확인하고,
 미리 준비된 질문으로 「AI로 사용해보기」를 해 보는 Portal 이다. UI + thin BFF 로만 이루어진다.
 
-> **현재 상태.** MCP 목록 · Tool · 상태는 `KEM_GATEWAY_MODE=live` 에서 실제 KRRI_ASAP Gateway 를 읽는다
-> (기본은 mock). AI로 사용해보기 실행 결과와 등록 미리보기는 아직 **mock** 이다.
+> **현재 상태.** MCP 목록 · Tool · 상태와 도구함(사용자별 MCP selection)은 `KEM_GATEWAY_MODE=live` 에서
+> 실제 KRRI_ASAP Gateway 를 쓴다 (기본은 mock). AI로 사용해보기 실행 결과는 아직 **mock** 이다.
 
 ## 구조
 
@@ -17,8 +17,8 @@ krri-easy-mcps/
 │   │   ├── settings.py      KEM_* 환경변수 (내부 주소는 여기만)
 │   │   ├── metadata.py      config/*.yaml 읽기
 │   │   ├── trace.py         agentic_ai 이벤트 → Portal 실행 결과
-│   │   ├── routes/          catalog · demo · registration
-│   │   └── clients/         gateway.py (mock | live) · agentic_ai.py (mock)
+│   │   ├── routes/          catalog · demo · toolbox
+│   │   └── clients/         gateway.py · selection.py (mock | live) · agentic_ai.py (mock)
 │   └── tests/
 ├── config/
 │   ├── presentation.yaml    Portal 전용 표시 정보 (server_id 기준)
@@ -66,8 +66,11 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 | route | 내용 |
 |---|---|
 | `/` | MCP 탐색. 카드(이름 · 요약 · 카테고리 · 기관 · Tool 수 · 상태), 검색, 카테고리 필터 |
-| `/mcps/:serverId` | MCP 상세. 설명 · 상태 · Tool 목록/parameter · AI로 사용해보기 |
-| `/toolbox/register` | 도구함 › MCP 등록. Endpoint 입력 → 정보 불러오기 → Server/Capabilities/Tool 미리보기 |
+| `/mcps/:serverId` | MCP 상세. 설명 · 상태 · 도구함 등록/해제 · Tool 목록/parameter · AI로 사용해보기 |
+| `/toolbox` | 도구함. 내가 등록한 기존 MCP 목록과 해제. 비었으면 MCP 탐색으로 안내 |
+
+Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도구함 등록은 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것**이고,
+신규 MCP server 를 시스템에 추가하는 기능(onboarding)은 future backlog 다.
 
 자유 질문 입력과 Tool 직접 테스트 화면은 없다.
 
@@ -80,13 +83,18 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 | GET | `/api/mcps/{server_id}` | 상세 + Tool/parameter |
 | GET | `/api/mcps/{server_id}/demo-questions` | 고정 질문 `{question_id, display_text}` 만 |
 | POST | `/api/demo/questions/{question_id}/execute` | 고정 질문 실행 → trace + 최종 답변 |
-| POST | `/api/registration/inspect` | `{endpoint}` → 등록 미리보기 (mock, endpoint 를 호출하지 않음) |
+| GET | `/api/toolbox` | 내 도구함 `{server_ids, mcps: [catalog 카드]}` |
+| POST | `/api/toolbox/{server_id}` | 도구함에 등록 (이미 있으면 그대로) → 도구함 |
+| DELETE | `/api/toolbox/{server_id}` | 도구함에서 해제 (없으면 그대로) → 도구함 |
+
+도구함은 Gateway `GET/PUT /api/me/mcp-selections` 를 쓴다. 등록은 `<serverId>/*` 하나를 더하고, 해제는 그 server 의 ref 와
+그 server 를 담은 group 만 뺀다. 사용자는 HttpOnly cookie `kem_gateway_guest` (Gateway guest id) 로 구분한다.
 
 ## 책임 경계
 
 | | 맡는 것 |
 |---|---|
-| **KRRI EASY MCPs** | catalog · 검색 · 상세 · 표시 정보 · 도구함/등록 UI · AI로 사용해보기 UI. BFF 는 내부 client 호출과 응답 변환만 |
+| **KRRI EASY MCPs** | catalog · 검색 · 상세 · 표시 정보 · 도구함 UI · AI로 사용해보기 UI. BFF 는 내부 client 호출과 응답 변환만 |
 | **agentic_ai** | Resolve · Ontology · Recipe 선택 · workflow materialization · 실행 orchestration (source of truth) |
 | **KRRI_ASAP** | Gateway · MCP registry · MCP 실행 |
 
@@ -105,7 +113,9 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 
 ## 아직 안 된 것
 
-- 실제 registration inspect (Gateway MCP server test 재사용), 등록 · 게시
+- 도구함 selection 을 agentic_ai 채팅의 tool 범위에 반영 (지금 agentic_ai 는 고정 범위를 쓴다)
+- 로그인 사용자 연동 (지금은 guest)
+- 신규 MCP server onboarding (future backlog)
 - existing agentic_ai API (`POST /chat/stream`) 실제 연동
 - 실제 MCP 실행
 - production 인증 · 배포

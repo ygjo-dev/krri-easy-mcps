@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import MockNotice from '../components/MockNotice'
 import StatusBadge from '../components/StatusBadge'
+import ToolboxButton from '../components/ToolboxButton'
 import ToolList from '../components/ToolList'
 import TryWithAi from '../components/TryWithAi'
 import type { McpDetail } from '../types/api'
@@ -30,6 +31,7 @@ function McpDetailView({ serverId }: { serverId: string }) {
       <div className="detail-head">
         <h1>{mcp.display_name}</h1>
         <StatusBadge status={mcp.status} />
+        <ToolboxButton serverId={mcp.server_id} allowRemove />
       </div>
       <p>{mcp.summary}</p>
       <div className="meta">

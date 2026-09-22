@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import MockNotice from '../components/MockNotice'
 import StatusBadge from '../components/StatusBadge'
+import ToolboxButton from '../components/ToolboxButton'
 import type { McpCard } from '../types/api'
 
 export default function CatalogPage() {
@@ -54,8 +55,9 @@ export default function CatalogPage() {
       ) : (
         <ul className="cards">
           {visible.map((c) => (
-            <li key={c.server_id}>
-              <Link to={`/mcps/${c.server_id}`} className="card">
+            <li key={c.server_id} className="card">
+              {/* 버튼은 Link 밖에 둔다. 누를 때 상세로 넘어가지 않게. */}
+              <Link to={`/mcps/${c.server_id}`} className="card-link">
                 <div className="card-head">
                   <strong>{c.display_name}</strong>
                   <StatusBadge status={c.status} />
@@ -67,6 +69,9 @@ export default function CatalogPage() {
                   <span>Tool {c.tool_count}개</span>
                 </div>
               </Link>
+              <div className="card-actions">
+                <ToolboxButton serverId={c.server_id} />
+              </div>
             </li>
           ))}
         </ul>

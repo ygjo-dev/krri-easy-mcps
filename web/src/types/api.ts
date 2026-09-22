@@ -59,11 +59,8 @@ export interface Execution {
   limitations: string[]
 }
 
-export interface InspectResult {
-  source: string
-  endpoint: string
-  server_info: { name: string; version: string }
-  protocol_version: string
-  capabilities: Record<string, unknown>
-  tools: { name: string; description: string; input_schema: unknown }[]
+// 도구함. 브라우저는 server_id 만 안다 (Gateway selection 내부 표현은 BFF 가 숨긴다).
+export interface Toolbox {
+  server_ids: string[]
+  mcps: McpCard[]
 }
