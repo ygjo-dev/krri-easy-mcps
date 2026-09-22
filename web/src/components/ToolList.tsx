@@ -1,6 +1,7 @@
 import type { Tool } from '../types/api'
 
 export default function ToolList({ tools }: { tools: Tool[] }) {
+  if (tools.length === 0) return <p className="muted">Gateway 가 이 MCP 의 Tool 목록을 받지 못했습니다.</p>
   return (
     <ul className="tools">
       {tools.map((t) => (

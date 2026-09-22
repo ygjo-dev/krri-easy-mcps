@@ -1,18 +1,57 @@
-"""KRRI_ASAP Gateway 쪽 boundary: technical MCP catalog · status · registration inspect.
+"""KRRI_ASAP Gateway 쪽 boundary: technical MCP catalog · tools · status (· registration inspect mock).
 
-**지금은 MOCK 이다.** 실제 Gateway 를 부르지 않는다.
-technical 정보(status · tools · inputSchema)의 source of truth 는 향후
-Gateway / live MCP tools/list 이고, 아래 MOCK_SERVERS 는 UI 구조를 검증하기 위한
-대표 subset 이다. production catalog 로 쓰지 않는다.
+Portal 내부 technical model (route 는 이 모양만 안다):
 
-tool name · description · inputSchema 는 agentic_ai 의 live tools/list 스냅샷
-(dev/tools/probe_out/tools.json, 2026-08 수집)에서 일부만 옮겼다. 긴 schema 는 줄였다.
-status 는 임의의 mock 값이다.
+    {"server_id", "name", "description", "status": "online|offline|unknown",
+     "tools": [{"name", "description", "input_schema"}]}
+
+두 구현이 있다. KEM_GATEWAY_MODE 로 고른다. live 실패 시 mock 으로 넘어가지 않는다.
+
+- MockGatewayClient  고정 데이터. tests · local 용. 대표 subset 이고 production catalog 가 아니다.
+- RealGatewayClient  실제 Gateway 를 GET 으로만 읽는다. 아래 두 endpoint 만 쓴다.
+
+**Gateway 읽기 경로 (KRRI_ASAP/ASAP-Gateway, 2026-09-22 read-only 확인)**
+
+GET /api/tools          (권한 ANYONE)
+    tool name · description · inputSchema · serverId 의 authoritative source.
+    **write 는 아니지만 부를 때마다 registry.refreshTools() 를 일으킨다** — 등록된 모든 MCP 에
+    tools/list 를 보내고 Gateway 메모리의 tool cache · server status 를 갈아 끼운다
+    (servers.json 등 registry 설정은 안 바뀐다). ASAP-orchestrator 도 같은 경로를 쓴다.
+    그래서 BFF 가 결과를 cache_seconds 동안 재사용하고, 그 안에서는 다시 부르지 않는다.
+
+GET /api/mcp-market     (권한 ANYONE)
+    **MCP server catalog 가 아니라 tool-group(market) catalog 다.** item 하나 ≠ server 하나.
+    serverIds 로 server id 를 discover 하고, single-server group 의 status 만 참고한다.
+    application behavior 가 있다: 요청마다 guest cookie(asap_mcp_guest) 를 새로 발급하고
+    guest selection 을 DB 에서 SELECT 한다. Gateway tool cache 가 비어 있으면 이 GET 도
+    refreshTools 를 일으킨다. /api/tools 직후에 한 번만 부른다.
+
+쓰지 않는 것: /api/admin/mcp-servers[/:id] (Keycloak ADMIN JWT 필요, 응답에 url · headers 포함),
+admin POST/PUT/DELETE/refresh/test. 향후 Gateway 에 safe read-only server catalog 가 생기면
+이 파일 안에서만 source 를 바꾼다.
+
+**status (보수적)**
+
+online   이번 /api/tools refresh 결과에 그 server 의 tool 이 실제로 있다 (tools/list 가 방금 성공).
+offline  그 server 하나만 담은 mcp-market group 이 error 또는 disabled 라고 명시한다.
+unknown  그 밖의 모든 경우. registry 에 있다는 것만으로 online 이 아니고, multi-server group
+         (예: route-accessibility → [otp-router, r5-server]) 의 status 는 개별 server 로 옮기지 않는다.
+
+Mock 데이터의 tool name · description · inputSchema 는 agentic_ai 의 live tools/list 스냅샷
+(dev/tools/probe_out/tools.json, 2026-08 수집)에서 일부만 옮겼다. mock status 는 임의 값이다.
 """
 
+import json
+import threading
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
 SOURCE_MOCK = "mock"
+SOURCE_LIVE = "live"
 
 MOCK_SERVERS: list[dict] = [
     {
@@ -150,6 +189,10 @@ class InvalidEndpoint(ValueError):
     pass
 
 
+class GatewayUnavailable(RuntimeError):
+    """Gateway 를 읽지 못했다. 메시지는 서버 로그용이고 브라우저로 내보내지 않는다."""
+
+
 class MockGatewayClient:
     """향후 Gateway catalog / MCP server test API 를 부를 자리. 지금은 고정 데이터."""
 
@@ -190,7 +233,117 @@ class MockGatewayClient:
         }
 
 
-def make_gateway_client(mode: str) -> MockGatewayClient:
+class RealGatewayClient:
+    """실제 Gateway 를 GET 으로만 읽는다. 결과를 cache_seconds 동안 한 벌로 재사용한다."""
+
+    source = SOURCE_LIVE
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        cache_seconds: float = 60,
+        timeout_seconds: float = 30,
+        fetch_json: Callable[[str], Any] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self._base_url = base_url.rstrip("/")
+        self._cache_seconds = cache_seconds
+        self._timeout = timeout_seconds
+        self._fetch_json = fetch_json or self._urllib_get_json
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._cached: list[dict] | None = None
+        self._cached_at = 0.0
+
+    def list_servers(self) -> list[dict]:
+        return self._snapshot()
+
+    def get_server(self, server_id: str) -> dict | None:
+        return next((s for s in self._snapshot() if s["server_id"] == server_id), None)
+
+    def _snapshot(self) -> list[dict]:
+        # lock 안에서 채운다. 동시에 온 Catalog/Detail 요청이 /api/tools 를 두 번 부르지 않게.
+        with self._lock:
+            if self._cached is not None and self._clock() - self._cached_at < self._cache_seconds:
+                return self._cached
+            tools = self._get_list("/api/tools")
+            market = self._get_list("/api/mcp-market")
+            self._cached = normalize_gateway_catalog(tools, market)
+            self._cached_at = self._clock()
+            return self._cached
+
+    def _get_list(self, path: str) -> list:
+        try:
+            data = self._fetch_json(path)
+        except GatewayUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001 — 무엇이든 "Gateway 를 못 읽었다" 하나로 모은다.
+            raise GatewayUnavailable(f"GET {path} failed: {exc}") from exc
+        if not isinstance(data, list):
+            raise GatewayUnavailable(f"GET {path} returned {type(data).__name__}, expected list")
+        return data
+
+    def _urllib_get_json(self, path: str) -> Any:
+        request = urllib.request.Request(self._base_url + path, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+                return json.load(response)
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            raise GatewayUnavailable(f"GET {path} failed: {exc}") from exc
+
+
+def normalize_gateway_catalog(tools: list, market: list) -> list[dict]:
+    """GET /api/tools + GET /api/mcp-market → Portal technical model. Gateway 응답 모양은 여기서 끝난다."""
+    tools_by_server: dict[str, list[dict]] = {}
+    for tool in tools:
+        if not isinstance(tool, dict) or not tool.get("serverId") or not tool.get("name"):
+            continue
+        tools_by_server.setdefault(str(tool["serverId"]), []).append({
+            "name": str(tool["name"]),
+            "description": tool.get("description") or "",
+            "input_schema": tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {},
+        })
+
+    server_ids = set(tools_by_server)
+    single_server_groups: dict[str, list[dict]] = {}
+    for group in market:
+        if not isinstance(group, dict):
+            continue
+        ids = [str(i) for i in group.get("serverIds") or [] if i]
+        server_ids.update(ids)
+        if len(ids) == 1:
+            single_server_groups.setdefault(ids[0], []).append(group)
+
+    servers = []
+    for server_id in sorted(server_ids):
+        groups = single_server_groups.get(server_id, [])
+        # Gateway 는 group 정의에 안 걸린 server 에 id=server_id 인 fallback group 을 만들고,
+        # 그 name/description 에 server 정의의 name/description 을 싣는다. 그것만 technical 이름으로 쓴다.
+        own = next((g for g in groups if g.get("id") == server_id), None)
+        servers.append({
+            "server_id": server_id,
+            "name": (own or {}).get("name") or server_id,
+            "description": (own or {}).get("description") or "",
+            "status": _status(tools_by_server.get(server_id), groups),
+            "tools": tools_by_server.get(server_id, []),
+        })
+    return servers
+
+
+def _status(tools: list[dict] | None, single_server_groups: list[dict]) -> str:
+    if tools:
+        return "online"
+    if any(g.get("status") in ("error", "disabled") for g in single_server_groups):
+        return "offline"
+    return "unknown"
+
+
+def make_gateway_client(mode: str, base_url: str = "", cache_seconds: float = 60):
     if mode == SOURCE_MOCK:
         return MockGatewayClient()
-    raise NotImplementedError(f"gateway mode {mode!r} is not implemented yet (only 'mock')")
+    if mode == SOURCE_LIVE:
+        if not base_url:
+            raise ValueError("KEM_GATEWAY_MODE=live requires KEM_GATEWAY_BASE_URL")
+        return RealGatewayClient(base_url, cache_seconds=cache_seconds)
+    raise ValueError(f"unknown KEM_GATEWAY_MODE {mode!r} (mock | live)")

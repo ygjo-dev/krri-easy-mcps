@@ -1,17 +1,24 @@
-"""MCP catalog / detail. technical(Gateway client) + presentation(config) 을 server_id 로 join."""
+"""MCP catalog / detail. technical(Gateway client) + presentation(config) 을 server_id 로 join.
+
+presentation.yaml 에 entry 가 없는 server 도 숨기지 않는다. technical 값으로 채운다.
+"""
 
 from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(prefix="/api/mcps", tags=["catalog"])
 
+FALLBACK_CATEGORY = "기타"
+
 
 def _card(server: dict, presentation: dict, source: str) -> dict:
     p = presentation.get(server["server_id"]) or {}
+    technical_name = server.get("name") or server["server_id"]
     return {
         "server_id": server["server_id"],
-        "display_name": p.get("display_name") or server["server_id"],
-        "summary": p.get("summary") or "",
-        "category": p.get("category") or "",
+        "technical_name": technical_name,
+        "display_name": p.get("display_name") or technical_name,
+        "summary": p.get("summary") or server.get("description") or "",
+        "category": p.get("category") or FALLBACK_CATEGORY,
         "organization": p.get("organization") or "",
         "status": server.get("status") or "unknown",
         "tool_count": len(server.get("tools") or []),
@@ -19,14 +26,31 @@ def _card(server: dict, presentation: dict, source: str) -> dict:
     }
 
 
+def _type_label(spec: dict) -> str:
+    """parameter type 한 줄. anyOf/oneOf · type 목록 · array items 까지만 읽고, 나머지는 any."""
+    if not isinstance(spec, dict):
+        return "any"
+    options = spec.get("anyOf") or spec.get("oneOf")
+    if isinstance(options, list) and options:
+        return " | ".join(_type_label(o) for o in options)
+    kind = spec.get("type")
+    if isinstance(kind, list):
+        return " | ".join(str(k) for k in kind)
+    if kind == "array" and isinstance(spec.get("items"), dict) and spec["items"].get("type"):
+        return f"array<{_type_label(spec['items'])}>"
+    return str(kind) if kind else "any"
+
+
 def _parameters(input_schema: dict) -> list[dict]:
     """inputSchema 를 화면이 그릴 parameter 목록으로. raw schema 는 내보내지 않는다."""
     required = set(input_schema.get("required") or [])
+    properties = input_schema.get("properties")
     params = []
-    for name, spec in (input_schema.get("properties") or {}).items():
+    for name, spec in (properties if isinstance(properties, dict) else {}).items():
+        spec = spec if isinstance(spec, dict) else {}
         params.append({
             "name": name,
-            "type": spec.get("type") or "any",
+            "type": _type_label(spec),
             "required": name in required,
             "description": spec.get("description") or "",
             "default": spec.get("default"),

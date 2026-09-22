@@ -15,6 +15,6 @@ class InspectRequest(BaseModel):
 @router.post("/inspect")
 def inspect(form: InspectRequest, request: Request) -> dict:
     try:
-        return request.app.state.gateway.inspect(form.endpoint.strip())
+        return request.app.state.registration_inspector.inspect(form.endpoint.strip())
     except InvalidEndpoint as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None

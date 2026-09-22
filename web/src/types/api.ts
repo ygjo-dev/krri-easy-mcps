@@ -4,6 +4,7 @@ export type Status = 'online' | 'offline' | 'unknown'
 
 export interface McpCard {
   server_id: string
+  technical_name: string
   display_name: string
   summary: string
   category: string

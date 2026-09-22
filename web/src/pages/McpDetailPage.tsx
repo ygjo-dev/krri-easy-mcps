@@ -36,6 +36,7 @@ function McpDetailView({ serverId }: { serverId: string }) {
         <span>{mcp.category}</span>
         <span>{mcp.organization}</span>
         <code>{mcp.server_id}</code>
+        {mcp.technical_name !== mcp.server_id && <span>기술 이름 {mcp.technical_name}</span>}
       </div>
       <MockNotice source={mcp.source} />
 

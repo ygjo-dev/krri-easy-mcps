@@ -54,11 +54,50 @@ UI 는 「제공되지 않음」으로 보인다. 지금 mock 은 UI 모양을 �
 
 또 step 이벤트는 agentic_ai 가 실행을 마친 뒤 한꺼번에 나간다 (step 시각이 실제 호출 시각이 아님).
 
-## BFF → KRRI_ASAP Gateway (지금 mock)
+## BFF → KRRI_ASAP Gateway (mock | live)
 
-`api/app/clients/gateway.py`. technical 정보(status · tools · inputSchema)의 source of truth 는
-향후 Gateway / live MCP `tools/list` 다. 지금의 `MOCK_SERVERS` 는 대표 subset 이다.
-등록 미리보기(`inspect`)는 향후 Gateway 의 기존 MCP server test 기능으로 교체한다.
+`api/app/clients/gateway.py`. `KEM_GATEWAY_MODE` 로 고른다.
+
+- `mock` (기본): 고정 대표 subset. tests · local 용.
+- `live`: 실제 Gateway 를 **GET 으로만** 읽는다. `KEM_GATEWAY_BASE_URL` 필수.
+  live 가 실패하면 BFF 는 502 `{"detail": "Gateway 에서 MCP 정보를 가져오지 못했습니다."}` 를 낸다.
+  **mock 으로 자동 전환하지 않는다.** 원인은 BFF 서버 로그에만 남는다.
+
+### technical source (KRRI_ASAP/ASAP-Gateway, 2026-09-22 read-only 확인)
+
+| 정보 | source | 비고 |
+|---|---|---|
+| tool name · description · inputSchema | `GET /api/tools` (ANYONE) | authoritative. ASAP-orchestrator 도 쓰는 live discovery 경로. **write 는 아니지만 호출마다 `registry.refreshTools()`** — 모든 MCP 에 tools/list 를 보내고 Gateway 메모리의 tool cache · status 를 갱신한다 |
+| server id | `/api/tools` 의 `serverId` ∪ `/api/mcp-market` 의 `serverIds` | presentation.yaml 은 server source 가 아니다 |
+| status 보조 | `GET /api/mcp-market` (ANYONE) | **tool-group(market) catalog 이지 server catalog 가 아니다.** 요청마다 guest cookie 발급 + guest selection DB SELECT. Gateway tool cache 가 비면 이 GET 도 refresh 를 일으킨다 |
+
+BFF 는 두 GET 의 결과를 `KEM_GATEWAY_CACHE_SECONDS`(기본 60) 동안 한 벌로 재사용한다.
+그 안의 Catalog / Detail 요청은 Gateway 를 다시 부르지 않는다.
+
+쓰지 않는 것: `/api/admin/mcp-servers[/:id]` (Keycloak ADMIN JWT 필요, 응답에 server `url` · `headers` 포함),
+admin POST/PUT/DELETE, `/refresh`, `/test`. Portal BFF 에 ADMIN credential 을 두지 않는다.
+Gateway 에 safe read-only server catalog 가 생기면 `gateway.py` 안에서만 source 를 바꾼다.
+
+### status
+
+| 값 | 근거 |
+|---|---|
+| `online` | 이번 `/api/tools` refresh 결과에 그 server 의 tool 이 실제로 있다 (tools/list 가 방금 성공) |
+| `offline` | 그 server **하나만** 담은 mcp-market group 이 `error` 또는 `disabled` 라고 명시한다 |
+| `unknown` | 그 밖의 모든 경우. registry 에 있다는 것 ≠ online. multi-server group (예: `route-accessibility → [otp-router, r5-server]`) 의 status 는 개별 server 로 옮기지 않는다 |
+
+### presentation join
+
+`config/presentation.yaml` 은 server_id 로 붙는 표시 정보(display_name · summary · category · organization)뿐이다.
+entry 가 없는 server 도 숨기지 않는다: display_name = technical name(없으면 server_id), summary = technical
+description(없으면 빈 값), category = `기타`, organization = 빈 값.
+technical name 은 Gateway 가 group 정의에 안 걸린 server 에 만드는 fallback group(id = server_id)의 name 만 쓴다.
+
+### 등록 미리보기 (여전히 mock)
+
+`inspect` 는 mode 와 무관하게 mock 이다. 향후 후보는 Gateway `POST /api/admin/mcp-servers/test`
+(ADMIN, body = server 정의 `{id, type: mcp-streamable-http|rest, url, name?, description?, headers?, timeoutMs?}`,
+응답 `{ok, server, toolCount, tools, error?}`, 실패 시 422). server 정의를 저장하지 않고 tools/list 만 해 본다. Track A-2 에서 다룬다.
 Portal 은 사용자가 입력한 endpoint 를 직접 부르지 않는다.
 
 ## Browser → BFF
