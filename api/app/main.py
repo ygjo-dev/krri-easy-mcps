@@ -6,9 +6,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .clients.agentic_ai import make_agentic_ai_client
-from .clients.gateway import GatewayUnavailable, MockGatewayClient, make_gateway_client
+from .clients.gateway import GatewayUnavailable, make_gateway_client
+from .clients.selection import make_selection_client
 from .metadata import load_demo_questions, load_presentation
-from .routes import catalog, demo, registration
+from .routes import catalog, demo, toolbox
 from .settings import Settings, load_settings
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.gateway = make_gateway_client(
         settings.gateway_mode, settings.gateway_base_url, settings.gateway_cache_seconds
     )
-    # 등록 미리보기는 mode 와 무관하게 아직 mock 이다 (Track A-2).
-    app.state.registration_inspector = MockGatewayClient()
+    app.state.selection = make_selection_client(settings.gateway_mode, settings.gateway_base_url)
 
     @app.exception_handler(GatewayUnavailable)
     async def gateway_unavailable(request: Request, exc: GatewayUnavailable) -> JSONResponse:
@@ -44,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(catalog.router)
     app.include_router(demo.router)
-    app.include_router(registration.router)
+    app.include_router(toolbox.router)
     return app
 
 

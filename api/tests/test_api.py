@@ -103,15 +103,3 @@ def test_execute_response_has_no_trusted_metadata_or_commands(client):
 
 def test_execute_unknown_question_404(client):
     assert client.post("/api/demo/questions/nope/execute").status_code == 404
-
-
-def test_registration_inspect_mock(client):
-    body = client.post("/api/registration/inspect", json={"endpoint": "https://example.org/mcp"}).json()
-    assert body["source"] == "mock"
-    assert body["server_info"]["name"]
-    assert body["capabilities"]
-    assert body["tools"][0]["name"]
-
-
-def test_registration_inspect_rejects_non_http(client):
-    assert client.post("/api/registration/inspect", json={"endpoint": "file:///etc/passwd"}).status_code == 422

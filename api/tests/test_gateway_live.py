@@ -219,8 +219,3 @@ def test_factory_modes():
         make_gateway_client("live", "")
     with pytest.raises(ValueError):
         make_gateway_client("nope")
-
-
-def test_live_mode_keeps_registration_mock(client):
-    body = client.post("/api/registration/inspect", json={"endpoint": "https://example.org/mcp"}).json()
-    assert body["source"] == "mock"

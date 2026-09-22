@@ -1,4 +1,4 @@
-"""KRRI_ASAP Gateway 쪽 boundary: technical MCP catalog · tools · status (· registration inspect mock).
+"""KRRI_ASAP Gateway 쪽 boundary: technical MCP catalog · tools · status. (도구함 selection 은 selection.py)
 
 Portal 내부 technical model (route 는 이 모양만 안다):
 
@@ -48,7 +48,6 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
 
 SOURCE_MOCK = "mock"
 SOURCE_LIVE = "live"
@@ -185,8 +184,13 @@ MOCK_SERVERS: list[dict] = [
 ]
 
 
-class InvalidEndpoint(ValueError):
-    pass
+# mock market group → server. multi-server group 하나를 일부러 둔다 (실제 Gateway 와 같은 모양).
+MOCK_GROUP_SERVERS: dict[str, list[str]] = {
+    "krri-road-cctv": ["asap-mcp-core"],
+    "krri-map-location": ["asap-mcp-core"],
+    "route-accessibility": ["otp-router", "r5-server"],
+    "web-research": ["web-search"],
+}
 
 
 class GatewayUnavailable(RuntimeError):
@@ -194,7 +198,7 @@ class GatewayUnavailable(RuntimeError):
 
 
 class MockGatewayClient:
-    """향후 Gateway catalog / MCP server test API 를 부를 자리. 지금은 고정 데이터."""
+    """고정 데이터. tests · local 용."""
 
     source = SOURCE_MOCK
 
@@ -204,33 +208,8 @@ class MockGatewayClient:
     def get_server(self, server_id: str) -> dict | None:
         return next((s for s in MOCK_SERVERS if s["server_id"] == server_id), None)
 
-    def inspect(self, endpoint: str) -> dict:
-        """등록 전 미리보기. **endpoint 를 실제로 호출하지 않는다.**
-
-        향후 KRRI_ASAP Gateway 의 기존 MCP server test 기능으로 교체한다.
-        Portal 이 임의 endpoint 를 직접 호출하지 않는다.
-        """
-        parsed = urlparse(endpoint)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise InvalidEndpoint("http(s) URL 을 입력하세요.")
-        return {
-            "source": SOURCE_MOCK,
-            "endpoint": endpoint,
-            "server_info": {"name": "example-mcp-server", "version": "0.1.0"},
-            "protocol_version": "2025-06-18",
-            "capabilities": {"tools": {"listChanged": False}},
-            "tools": [
-                {
-                    "name": "example.echo",
-                    "description": "입력한 문자열을 그대로 돌려줍니다. (mock)",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {"text": {"type": "string", "description": "돌려받을 문자열"}},
-                        "required": ["text"],
-                    },
-                },
-            ],
-        }
+    def group_servers(self) -> dict[str, list[str]]:
+        return MOCK_GROUP_SERVERS
 
 
 class RealGatewayClient:
@@ -253,23 +232,27 @@ class RealGatewayClient:
         self._fetch_json = fetch_json or self._urllib_get_json
         self._clock = clock
         self._lock = threading.Lock()
-        self._cached: list[dict] | None = None
+        self._cached: tuple[list[dict], dict[str, list[str]]] | None = None
         self._cached_at = 0.0
 
     def list_servers(self) -> list[dict]:
-        return self._snapshot()
+        return self._snapshot()[0]
 
     def get_server(self, server_id: str) -> dict | None:
-        return next((s for s in self._snapshot() if s["server_id"] == server_id), None)
+        return next((s for s in self.list_servers() if s["server_id"] == server_id), None)
 
-    def _snapshot(self) -> list[dict]:
+    def group_servers(self) -> dict[str, list[str]]:
+        """market group id → serverIds. 도구함 해제 때 그 server 를 담은 group 을 찾는 데만 쓴다."""
+        return self._snapshot()[1]
+
+    def _snapshot(self) -> tuple[list[dict], dict[str, list[str]]]:
         # lock 안에서 채운다. 동시에 온 Catalog/Detail 요청이 /api/tools 를 두 번 부르지 않게.
         with self._lock:
             if self._cached is not None and self._clock() - self._cached_at < self._cache_seconds:
                 return self._cached
             tools = self._get_list("/api/tools")
             market = self._get_list("/api/mcp-market")
-            self._cached = normalize_gateway_catalog(tools, market)
+            self._cached = (normalize_gateway_catalog(tools, market), normalize_group_servers(market))
             self._cached_at = self._clock()
             return self._cached
 
@@ -329,6 +312,14 @@ def normalize_gateway_catalog(tools: list, market: list) -> list[dict]:
             "tools": tools_by_server.get(server_id, []),
         })
     return servers
+
+
+def normalize_group_servers(market: list) -> dict[str, list[str]]:
+    return {
+        str(g["id"]): [str(i) for i in g.get("serverIds") or [] if i]
+        for g in market
+        if isinstance(g, dict) and g.get("id")
+    }
 
 
 def _status(tools: list[dict] | None, single_server_groups: list[dict]) -> str:

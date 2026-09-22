@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/mcps", tags=["catalog"])
 FALLBACK_CATEGORY = "기타"
 
 
-def _card(server: dict, presentation: dict, source: str) -> dict:
+def card(server: dict, presentation: dict, source: str) -> dict:
     p = presentation.get(server["server_id"]) or {}
     technical_name = server.get("name") or server["server_id"]
     return {
@@ -62,7 +62,7 @@ def _parameters(input_schema: dict) -> list[dict]:
 @router.get("")
 def list_mcps(request: Request) -> list[dict]:
     state = request.app.state
-    return [_card(s, state.presentation, state.gateway.source) for s in state.gateway.list_servers()]
+    return [card(s, state.presentation, state.gateway.source) for s in state.gateway.list_servers()]
 
 
 @router.get("/{server_id}")
@@ -71,7 +71,7 @@ def get_mcp(server_id: str, request: Request) -> dict:
     server = state.gateway.get_server(server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="MCP 를 찾을 수 없습니다.")
-    detail = _card(server, state.presentation, state.gateway.source)
+    detail = card(server, state.presentation, state.gateway.source)
     detail["tools"] = [
         {
             "name": t["name"],
