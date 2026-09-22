@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .clients.agentic_ai import make_agentic_ai_client
+from .clients.agentic_ai import AgenticAiUnavailable, make_agentic_ai_client
 from .clients.gateway import GatewayUnavailable, make_gateway_client
 from .clients.selection import make_selection_client
 from .metadata import load_demo_questions, load_presentation
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Gateway 를 못 읽었을 때 브라우저로 나가는 문구. 원인(내부 URL · 응답 본문)은 서버 로그에만 남는다.
 GATEWAY_UNAVAILABLE_DETAIL = "Gateway 에서 MCP 정보를 가져오지 못했습니다."
+AGENTIC_AI_UNAVAILABLE_DETAIL = "AI 실행 서비스에 연결하지 못했습니다."
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -32,7 +33,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def gateway_unavailable(request: Request, exc: GatewayUnavailable) -> JSONResponse:
         logger.warning("Gateway unavailable on %s: %s", request.url.path, exc)
         return JSONResponse(status_code=502, content={"detail": GATEWAY_UNAVAILABLE_DETAIL})
-    app.state.agentic_ai = make_agentic_ai_client(settings.agentic_ai_mode)
+    app.state.agentic_ai = make_agentic_ai_client(
+        settings.agentic_ai_mode, settings.agentic_ai_base_url, settings.agentic_ai_timeout_seconds
+    )
+
+    @app.exception_handler(AgenticAiUnavailable)
+    async def agentic_ai_unavailable(request: Request, exc: AgenticAiUnavailable) -> JSONResponse:
+        logger.warning("agentic_ai unavailable on %s: %s", request.url.path, exc)
+        return JSONResponse(status_code=502, content={"detail": AGENTIC_AI_UNAVAILABLE_DETAIL})
 
     @app.get("/api/health")
     def health() -> dict:

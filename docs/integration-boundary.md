@@ -15,10 +15,15 @@ KRRI_ASAP (Gateway / MCP servers)
 **KRRI EASY MCPs 를 위해 agentic_ai 를 수정하지 않는다.** agentic_ai 는 이 Portal 의 존재를 알 필요가 없다.
 Portal 전용 execution API · trace API · Resolve mode · recipe 직접 실행 경로를 전제하지 않는다.
 
-## BFF → agentic_ai (지금 mock)
+## BFF → agentic_ai (mock | live)
 
-`api/app/clients/agentic_ai.py`. 향후 실제 client 는 agentic_ai 의 기존 `POST /chat/stream` 을 부른다
-(agentic_ai `app/api/main.py`, 2026-09-22 read-only 확인. KRRI_ASAP 도 이 창구를 부른다).
+`api/app/clients/agentic_ai.py`. `KEM_AGENTIC_AI_MODE` 로 고른다.
+
+- `mock` (기본): 고정 이벤트. tests · local 용.
+- `live`: agentic_ai 의 기존 `POST /chat/stream` 을 부른다 (agentic_ai `app/api/main.py`, 2026-09-22 read-only 확인.
+  KRRI_ASAP 도 이 창구를 부른다). `KEM_AGENTIC_AI_BASE_URL` 필수, timeout 기본 360초 (`KEM_AGENTIC_AI_TIMEOUT_SECONDS`).
+
+브라우저는 `question_id` 만 보낸다. BFF 가 그 id 로 config 의 trusted `display_text` 를 찾아 발화로 보낸다.
 
 요청
 
@@ -35,6 +40,11 @@ Portal 전용 execution API · trace API · Resolve mode · recipe 직접 실행
 | tool 단계 | `{"type":"step_start","node":<node>,"message":"<tool> 호출 중입니다..."}` / `{"type":"step_end",...,"message":"<tool> 완료\|실패"}` |
 | 마지막 | `{"type":"result","answer":<문자열>,"commands":[<지도 명령>]}` |
 
+agentic 이 더한 칸(`step_end.failed`, KRRI 가 돌았을 때의 `result.status`)과 모르는 event type 은 읽지 않고 둔다.
+BFF 는 흐름을 `data: [DONE]` 까지 읽고, 다음은 모두 실패로 본다: 연결 실패 · timeout · 200 아닌 응답 ·
+`text/event-stream` 아닌 응답 · JSON 이 아닌 data · [DONE] 전에 끝남 · result 이벤트 없음.
+실패는 502 `{"detail": "AI 실행 서비스에 연결하지 못했습니다."}` 이고 원인 종류만 BFF 로그에 남는다 (URL · 본문 없음).
+
 Portal 은 display_text 를 발화로 보낼 뿐이다. recipe_id 를 지정하거나 Resolve 를 건너뛰지 않는다.
 fixed question 의 `expected_recipe_id` · `expected_tools` 는 실행 명령이 아니라,
 해석/실행이 예상한 기능으로 갔는지 **검증·설명**하는 metadata 다.
@@ -48,8 +58,8 @@ fixed question 의 `expected_recipe_id` · `expected_tools` 는 실행 명령이
 ### Limitation
 
 기존 `/chat/stream` 이벤트에는 **tool 단위 Request/Response 가 없다.** 그래서 PlayMCP 스타일
-Request/Response 전체는 기존 API 만으로 줄 수 없다. 실제 연결 뒤 `steps[].request/response` 는 `null` 이고
-UI 는 「제공되지 않음」으로 보인다. 지금 mock 은 UI 모양을 보이려고 예시값을 채운다.
+Request/Response 전체는 기존 API 만으로 줄 수 없다. live 에서 `steps[].request/response` 는 `null` 이고
+화면은 Request/Response 를 그리지 않는다. mock 의 예시값도 화면에는 쓰지 않는다.
 이 이유만으로 agentic_ai 를 수정하지 않는다.
 
 또 step 이벤트는 agentic_ai 가 실행을 마친 뒤 한꺼번에 나간다 (step 시각이 실제 호출 시각이 아님).
@@ -139,8 +149,9 @@ mock 으로 넘어가지 않고, 성공으로 가정하지 않는다. mock mode 
 Gateway proxy (`/api/orchestrator/*`, `/api/mcp/*`) 는 요청자의 selection 을 `X-User-MCP-Servers` · `X-User-MCP-Tools` ·
 `X-User-MCP-Groups` header 로 붙여 downstream 에 넘긴다. ASAP-orchestrator 는 이 header 로 실행 범위를 정하고,
 Gateway `POST /api/tools/execute` 는 명시 `user_context` 가 없으면 요청자의 selection 으로 `selected_mcp_tool_refs` 를 검사한다.
-**지금 8000 번의 agentic_ai 는 이 header 를 읽지 않고 고정 `USER_CONTEXT` 를 `user_context` 로 보낸다.** 그래서 도구함 selection 은
-KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 채팅의 tool 범위는 바꾸지 않는다.
+**지금 8000 번의 agentic_ai 는 이 header 를 읽지 않는다.** agentic 은 KRRI `POST /workflow/execute` 를 부를 때
+고정 `USER_CONTEXT` 로 `X-User-ID` · `X-User-MCP-Tools` 를 붙인다 (asap-mcp-core · r5-server · otp-router, web-search 없음).
+그래서 도구함 selection 은 KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 실행 범위는 바꾸지 않는다.
 또 Portal 의 guest(`kem_gateway_guest`) 와 ASAP-web 의 guest cookie 는 서로 다른 사용자다.
 
 ## Future backlog: 신규 MCP server onboarding

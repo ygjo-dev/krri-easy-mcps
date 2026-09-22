@@ -22,8 +22,10 @@ class Settings:
     gateway_base_url: str
     # Gateway GET /api/tools 는 부를 때마다 모든 MCP 에 tools/list refresh 를 일으킨다. 그 결과를 이만큼 재사용한다.
     gateway_cache_seconds: float
-    # 향후 live client 가 쓸 주소. 지금은 읽기만 하고 호출하지 않는다.
+    # KEM_AGENTIC_AI_MODE=live 에서 필수. 기본값을 두지 않는다.
     agentic_ai_base_url: str
+    # agentic 한 요청(LLM 해석 + KRRI 실행)을 기다리는 시간.
+    agentic_ai_timeout_seconds: float
 
 
 def load_settings() -> Settings:
@@ -34,4 +36,5 @@ def load_settings() -> Settings:
         gateway_base_url=os.environ.get("KEM_GATEWAY_BASE_URL", ""),
         gateway_cache_seconds=float(os.environ.get("KEM_GATEWAY_CACHE_SECONDS", "60")),
         agentic_ai_base_url=os.environ.get("KEM_AGENTIC_AI_BASE_URL", ""),
+        agentic_ai_timeout_seconds=float(os.environ.get("KEM_AGENTIC_AI_TIMEOUT_SECONDS", "360")),
     )

@@ -4,7 +4,8 @@ KRRI 가 제공하는 MCP 서버를 찾아보고, 상세 정보와 Tool 을 확�
 미리 준비된 질문으로 「AI로 사용해보기」를 해 보는 Portal 이다. UI + thin BFF 로만 이루어진다.
 
 > **현재 상태.** MCP 목록 · Tool · 상태와 도구함(사용자별 MCP selection)은 `KEM_GATEWAY_MODE=live` 에서
-> 실제 KRRI_ASAP Gateway 를 쓴다 (기본은 mock). AI로 사용해보기 실행 결과는 아직 **mock** 이다.
+> 실제 KRRI_ASAP Gateway 를 쓴다 (기본은 mock). AI로 사용해보기는 `KEM_AGENTIC_AI_MODE=live` 에서 agentic_ai 의
+> 기존 `POST /chat/stream` 을 부른다 (기본은 mock).
 
 ## 구조
 
@@ -18,7 +19,7 @@ krri-easy-mcps/
 │   │   ├── metadata.py      config/*.yaml 읽기
 │   │   ├── trace.py         agentic_ai 이벤트 → Portal 실행 결과
 │   │   ├── routes/          catalog · demo · toolbox
-│   │   └── clients/         gateway.py · selection.py (mock | live) · agentic_ai.py (mock)
+│   │   └── clients/         gateway.py · selection.py · agentic_ai.py (각각 mock | live)
 │   └── tests/
 ├── config/
 │   ├── presentation.yaml    Portal 전용 표시 정보 (server_id 기준)
@@ -61,6 +62,11 @@ KEM_GATEWAY_MODE=live KEM_GATEWAY_BASE_URL=http://127.0.0.1:3000 \
 live Gateway 가 실패하면 `/api/mcps*` 는 502 를 낸다. mock 으로 자동 전환하지 않는다.
 Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키므로 BFF 가 60초(`KEM_GATEWAY_CACHE_SECONDS`) 재사용한다.
 
+AI로 사용해보기를 실제 agentic_ai 로 실행하려면 `KEM_AGENTIC_AI_MODE=live` 와 `KEM_AGENTIC_AI_BASE_URL` 을 더한다
+(예: 개발 장비 `http://127.0.0.1:8000`). 한 요청은 LLM 해석과 KRRI 실행을 포함하므로 기본 360초
+(`KEM_AGENTIC_AI_TIMEOUT_SECONDS`) 를 기다린다. agentic_ai 를 못 부르거나 흐름이 깨지면
+`/api/demo/questions/*/execute` 는 502 를 내고, mock 으로 자동 전환하지 않는다.
+
 ## 화면
 
 | route | 내용 |
@@ -70,7 +76,8 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 | `/toolbox` | 도구함. 내가 등록한 기존 MCP 카드와 해제. 비었으면 MCP 탐색으로 안내 |
 
 화면 구성은 Kakao PlayMCP 의 정보 구조(카드 · 상세 · 도구함 · AI 채팅 panel)를 따른다. Kakao 로고 · 이미지는 쓰지 않고,
-MCP 아이콘은 모노그램이다. AI로 사용해보기는 준비된 대화 예시만 실행하며(자유 입력 없음) 결과는 아직 mock 이다.
+MCP 아이콘은 모노그램이다. AI로 사용해보기는 준비된 대화 예시만 실행한다(자유 입력 없음). live 에서는 tool 단위
+Request/Response 를 보여 주지 않는다 (기존 `/chat/stream` 이벤트에 없다).
 
 Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도구함 등록은 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것**이고,
 신규 MCP server 를 시스템에 추가하는 기능(onboarding)은 future backlog 다.
@@ -116,9 +123,8 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 
 ## 아직 안 된 것
 
-- 도구함 selection 을 agentic_ai 채팅의 tool 범위에 반영 (지금 agentic_ai 는 고정 범위를 쓴다)
+- 도구함 selection 을 agentic_ai 실행 범위에 반영 (지금 agentic_ai 는 고정 실행 범위를 쓴다)
 - 로그인 사용자 연동 (지금은 guest)
+- OTP · R5 는 Gateway 가 tools/list 를 못 받는 운영 문제로 「상태 모름」이다
 - 신규 MCP server onboarding (future backlog)
-- existing agentic_ai API (`POST /chat/stream`) 실제 연동
-- 실제 MCP 실행
 - production 인증 · 배포
