@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { SearchIcon } from '../components/Icons'
+import McpCard from '../components/McpCard'
 import MockNotice from '../components/MockNotice'
-import StatusBadge from '../components/StatusBadge'
-import ToolboxButton from '../components/ToolboxButton'
-import type { McpCard } from '../types/api'
+import type { McpCard as McpCardData } from '../types/api'
 
 export default function CatalogPage() {
-  const [cards, setCards] = useState<McpCard[] | null>(null)
+  const [cards, setCards] = useState<McpCardData[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
 
   useEffect(() => {
-    api.listMcps().then(setCards, (e: Error) => setError(e.message))
-  }, [])
+    api.listMcps().then(
+      (c) => {
+        setCards(c)
+        setError(null)
+      },
+      (e: Error) => setError(e.message),
+    )
+  }, [attempt])
 
   const categories = useMemo(() => [...new Set((cards ?? []).map((c) => c.category).filter(Boolean))], [cards])
 
@@ -28,54 +34,78 @@ export default function CatalogPage() {
     )
   }, [cards, query, category])
 
-  if (error) return <p className="error">{error}</p>
-  if (!cards) return <p className="muted">불러오는 중…</p>
-
   return (
-    <section>
-      <h1>MCP 탐색</h1>
-      <MockNotice source={cards[0]?.source ?? ''} />
-      <div className="filters">
-        <input
-          type="search"
-          placeholder="이름, 설명, 기관으로 검색"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="MCP 검색"
-        />
-        <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="카테고리">
-          <option value="">전체 카테고리</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+    <>
+      <section className="hero">
+        <h1>KRRI MCP 로 만드는<br />새로운 AI 경험</h1>
+        <p>AI 가 사용할 수 있는 KRRI 의 MCP 를 찾아보고, 필요한 MCP 를 도구함에 담아 보세요.</p>
+      </section>
+
+      <div className="toolbar">
+        <p className="toolbar-count">
+          {cards ? <>전체 MCP <strong>{visible.length}</strong>{visible.length !== cards.length && ` / ${cards.length}`}</> : ' '}
+        </p>
+        <div className="toolbar-controls">
+          <label className="search">
+            <SearchIcon />
+            <input
+              type="search"
+              placeholder="MCP 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="MCP 검색"
+            />
+          </label>
+          <select className="select-plain" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="분류">
+            <option value="">전체 분류</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      {visible.length === 0 ? (
-        <p className="muted">조건에 맞는 MCP 가 없습니다.</p>
-      ) : (
-        <ul className="cards">
+
+      {error && (
+        <div className="state-block" role="alert">
+          <p>{error}</p>
+          <button
+            type="button"
+            className="pill pill-outline"
+            onClick={() => {
+              setError(null)
+              setAttempt((n) => n + 1)
+            }}
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+      {!error && !cards && <div className="state-block muted">MCP 목록을 불러오는 중…</div>}
+      {cards && <MockNotice source={cards[0]?.source ?? ''} />}
+      {cards && visible.length === 0 && (
+        <div className="state-block">
+          <p>조건에 맞는 MCP 가 없습니다.</p>
+          <button
+            type="button"
+            className="pill pill-outline"
+            onClick={() => {
+              setQuery('')
+              setCategory('')
+            }}
+          >
+            검색 초기화
+          </button>
+        </div>
+      )}
+      {cards && visible.length > 0 && (
+        <ul className="card-grid">
           {visible.map((c) => (
-            <li key={c.server_id} className="card">
-              {/* 버튼은 Link 밖에 둔다. 누를 때 상세로 넘어가지 않게. */}
-              <Link to={`/mcps/${c.server_id}`} className="card-link">
-                <div className="card-head">
-                  <strong>{c.display_name}</strong>
-                  <StatusBadge status={c.status} />
-                </div>
-                <p>{c.summary}</p>
-                <div className="meta">
-                  <span>{c.category}</span>
-                  <span>{c.organization}</span>
-                  <span>Tool {c.tool_count}개</span>
-                </div>
-              </Link>
-              <div className="card-actions">
-                <ToolboxButton serverId={c.server_id} />
-              </div>
+            <li key={c.server_id}>
+              <McpCard mcp={c} action="card" />
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </>
   )
 }

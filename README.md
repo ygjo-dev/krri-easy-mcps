@@ -65,9 +65,12 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 
 | route | 내용 |
 |---|---|
-| `/` | MCP 탐색. 카드(이름 · 요약 · 카테고리 · 기관 · Tool 수 · 상태), 검색, 카테고리 필터 |
-| `/mcps/:serverId` | MCP 상세. 설명 · 상태 · 도구함 등록/해제 · Tool 목록/parameter · AI로 사용해보기 |
-| `/toolbox` | 도구함. 내가 등록한 기존 MCP 목록과 해제. 비었으면 MCP 탐색으로 안내 |
+| `/` | MCP 탐색. 카드(이름 · 제공 · 요약 · Tool 수 · 상태 · 분류 · 도구함 등록), 검색, 분류 필터 |
+| `/mcps/:serverId` | MCP 상세. 왼쪽: 정보 · 도구함 등록/해제 · 상태/제공/Tools/분류 · 「Tool 목록」(접히는 행) / 「MCP 정보」 탭. 오른쪽: AI로 사용해보기 panel (좁은 화면에서는 아래로) |
+| `/toolbox` | 도구함. 내가 등록한 기존 MCP 카드와 해제. 비었으면 MCP 탐색으로 안내 |
+
+화면 구성은 Kakao PlayMCP 의 정보 구조(카드 · 상세 · 도구함 · AI 채팅 panel)를 따른다. Kakao 로고 · 이미지는 쓰지 않고,
+MCP 아이콘은 모노그램이다. AI로 사용해보기는 준비된 대화 예시만 실행하며(자유 입력 없음) 결과는 아직 mock 이다.
 
 Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도구함 등록은 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것**이고,
 신규 MCP server 를 시스템에 추가하는 기능(onboarding)은 future backlog 다.

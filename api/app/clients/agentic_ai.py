@@ -54,7 +54,7 @@ _MOCK_REPLIES: dict[str, ChatStreamReply] = {
         events=_events(
             "recipe_001",
             [("geocode_place", "geo.geocode")],
-            "익산역의 위치를 지도에 표시했습니다. (mock 응답)",
+            "익산역의 위치를 지도에 표시했습니다.",
             [{"op": "map.flyTo", "args": {}}],
         ),
         tool_io=[
@@ -68,7 +68,7 @@ _MOCK_REPLIES: dict[str, ChatStreamReply] = {
         events=_events(
             "recipe_003",
             [("get_railway_lines", "geo.getRailwayLines")],
-            "천안역을 지나는 철도 노선을 지도에 표시했습니다. (mock 응답)",
+            "천안역을 지나는 철도 노선을 지도에 표시했습니다.",
             [{"op": "map.addLayer", "args": {}}],
         ),
         tool_io=[
@@ -82,7 +82,7 @@ _MOCK_REPLIES: dict[str, ChatStreamReply] = {
         events=_events(
             "recipe_034",
             [("geocode_place", "geo.geocode"), ("find_admin_boundary_by_point", "adminBoundary.findBoundaryByPoint")],
-            "부산역은 부산광역시 동구에 있습니다. (mock 응답)",
+            "부산역은 부산광역시 동구에 있습니다.",
             [],
         ),
         tool_io=[
@@ -97,7 +97,7 @@ _MOCK_REPLIES: dict[str, ChatStreamReply] = {
         events=_events(
             "recipe_036",
             [("geocode_place", "geo.geocode"), ("find_cctv", "road.getCctv")],
-            "수원역 반경 15km 안의 CCTV 를 지도에 표시했습니다. (mock 응답)",
+            "수원역 반경 15km 안의 CCTV 를 지도에 표시했습니다.",
             [{"op": "map.addLayer", "args": {}}],
         ),
         tool_io=[
@@ -114,7 +114,7 @@ _MOCK_NO_MATCH = ChatStreamReply(
     events=[
         {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."},
         {"type": "step_end", "node": "resolve", "message": "NO_MATCH"},
-        {"type": "result", "answer": "맞는 기능을 찾지 못했습니다. (mock 응답)", "commands": []},
+        {"type": "result", "answer": "맞는 기능을 찾지 못했습니다.", "commands": []},
     ],
 )
 

@@ -1,42 +1,43 @@
 import { Link } from 'react-router-dom'
-import StatusBadge from '../components/StatusBadge'
-import ToolboxButton from '../components/ToolboxButton'
+import McpCard from '../components/McpCard'
 import { useToolbox } from '../toolbox/context'
 
 export default function ToolboxPage() {
-  const { registered, mcps, loadError } = useToolbox()
+  const { registered, mcps, loadError, reload } = useToolbox()
 
   return (
-    <section>
-      <h1>도구함</h1>
-      <p className="muted">KRRI 에 있는 MCP 중 내가 쓰려고 담아 둔 것입니다.</p>
-      {loadError && <p className="error">{loadError}</p>}
-      {registered === null && !loadError && <p className="muted">불러오는 중…</p>}
+    <>
+      <section className="page-head">
+        <h1>도구함</h1>
+        <p>AI 에서 사용할 MCP 를 모아 둔 곳입니다. MCP 탐색에서 추가하고, 여기서 해제할 수 있습니다.</p>
+      </section>
+
+      {loadError && (
+        <div className="state-block" role="alert">
+          <p>{loadError}</p>
+          <button type="button" className="pill pill-outline" onClick={reload}>다시 시도</button>
+        </div>
+      )}
+      {registered === null && !loadError && <div className="state-block muted">도구함을 불러오는 중…</div>}
       {registered !== null && mcps.length === 0 && (
-        <div className="empty">
+        <div className="state-block">
           <p>아직 도구함에 등록한 MCP 가 없습니다.</p>
           <p className="muted">MCP 탐색에서 사용할 MCP 를 추가하세요.</p>
-          <Link to="/" className="button">MCP 탐색</Link>
+          <Link to="/" className="pill pill-primary">MCP 탐색</Link>
         </div>
       )}
       {mcps.length > 0 && (
-        <ul className="toolbox-list">
-          {mcps.map((m) => (
-            <li key={m.server_id} className="card">
-              <div className="card-head">
-                <Link to={`/mcps/${m.server_id}`}><strong>{m.display_name}</strong></Link>
-                <ToolboxButton serverId={m.server_id} allowRemove />
-              </div>
-              <p>{m.summary}</p>
-              <div className="meta">
-                <span>{m.category}</span>
-                <StatusBadge status={m.status} />
-                <span>Tool {m.tool_count}개</span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="toolbar-count">등록한 MCP <strong>{mcps.length}</strong></p>
+          <ul className="card-grid">
+            {mcps.map((m) => (
+              <li key={m.server_id}>
+                <McpCard mcp={m} action="remove" />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-    </section>
+    </>
   )
 }

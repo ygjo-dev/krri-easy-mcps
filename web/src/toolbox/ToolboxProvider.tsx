@@ -11,9 +11,20 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    api.getToolbox().then(setToolbox, (e: Error) => setLoadError(e.message))
+  const load = useCallback(() => {
+    api.getToolbox().then(
+      (t) => {
+        setToolbox(t)
+        setLoadError(null)
+      },
+      (e: Error) => setLoadError(e.message),
+    )
   }, [])
+
+  // load 를 그대로 넘기지 않는다. 반환값이 cleanup 자리로 가지 않게 block body 로 감싼다.
+  useEffect(() => {
+    load()
+  }, [load])
 
   const change = useCallback(async (serverId: string, call: (id: string) => Promise<Toolbox>) => {
     setPending((p) => new Set(p).add(serverId))
@@ -45,8 +56,9 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
       errors,
       add: (id) => change(id, api.addToToolbox),
       remove: (id) => change(id, api.removeFromToolbox),
+      reload: load,
     }),
-    [toolbox, loadError, pending, errors, change],
+    [toolbox, loadError, pending, errors, change, load],
   )
 
   return <ToolboxContext.Provider value={value}>{children}</ToolboxContext.Provider>
