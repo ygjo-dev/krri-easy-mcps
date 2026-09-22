@@ -1,0 +1,25 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# logs / runtime
+*.log
+logs/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

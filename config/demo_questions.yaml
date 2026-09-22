@@ -1,0 +1,37 @@
+# 「AI로 사용해보기」 고정 질문.
+#
+# 실행 contract 가 아니다. 실행 시 BFF 는 display_text 만 agentic_ai 기존
+# POST /chat/stream 에 발화로 보낸다. Resolve 는 agentic_ai 가 한다.
+#
+#   expected_recipe_id  resolve 가 이 recipe 를 골랐는지 검증·설명하기 위한 값
+#   expected_tools      실행이 이 tool 들을 거쳤는지 검증·설명하기 위한 값 (server_id/tool)
+#
+# 발화와 expected_recipe_id 는 agentic_ai 평가 정답표
+# dev/evaluation/inputs/test_suites/test_suite_v1.yaml 의 case 를 그대로 옮겼다
+# (2026-09-22, HEAD 3dffdcb). expected_tools 는 해당 recipe 의 execution.workflow 에서 읽었다.
+# 둘 다 브라우저로 내보내지 않는다.
+questions:
+  - question_id: iksan-station-location     # suite v1 case 1
+    mcp_server_id: asap-mcp-core
+    display_text: 익산역 위치 보여줘
+    expected_recipe_id: recipe_001
+    expected_tools: [asap-mcp-core/geo.geocode]
+    enabled: true
+  - question_id: cheonan-station-lines      # suite v1 case 3
+    mcp_server_id: asap-mcp-core
+    display_text: 천안역에 무슨 노선 다녀
+    expected_recipe_id: recipe_003
+    expected_tools: [asap-mcp-core/geo.getRailwayLines]
+    enabled: true
+  - question_id: busan-station-district     # suite v1 case 13
+    mcp_server_id: asap-mcp-core
+    display_text: 부산역이 무슨 구에 있어
+    expected_recipe_id: recipe_034
+    expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/adminBoundary.findBoundaryByPoint]
+    enabled: true
+  - question_id: suwon-station-cctv         # suite v1 case 14
+    mcp_server_id: asap-mcp-core
+    display_text: 수원역 근처 CCTV 띄워줘
+    expected_recipe_id: recipe_036
+    expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/road.getCctv]
+    enabled: true

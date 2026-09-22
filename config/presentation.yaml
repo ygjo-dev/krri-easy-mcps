@@ -1,0 +1,25 @@
+# Portal 전용 사용자-facing 표시 정보. server_id 로 technical catalog 와 join 한다.
+#
+# 여기에 두지 않는 것: internal/Gateway endpoint, credential, Authorization header,
+# raw tools/list, tool schema. technical 정보의 source of truth 는 Gateway / live tools/list 다.
+servers:
+  asap-mcp-core:
+    display_name: ASAP Core MCP
+    summary: 장소 좌표, 철도 노선, 행정구역, CCTV, 인구, 선거구 등 공간 데이터를 조회합니다.
+    category: 공간정보
+    organization: KRRI ASAP
+  otp-router:
+    display_name: OTP 경로 탐색
+    summary: OpenTripPlanner 로 좌표 기반 대중교통 경로를 계산합니다.
+    category: 교통
+    organization: KRRI ASAP
+  r5-server:
+    display_name: R5 접근성 분석
+    summary: 출발지에서 시간 안에 도달 가능한 영역(등시선)과 OD 통행시간을 계산합니다.
+    category: 교통
+    organization: KRRI ASAP
+  web-search:
+    display_name: 웹 검색
+    summary: 인터넷에서 최신 공개 정보를 검색합니다.
+    category: 검색
+    organization: KRRI ASAP
