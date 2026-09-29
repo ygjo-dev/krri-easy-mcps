@@ -13,9 +13,10 @@ from app.trace import LIMITATION_TOOL_IO_NONE, to_execution
 
 Q = DemoQuestion(
     question_id="suwon-station-cctv",
-    mcp_server_id="asap-mcp-core",
+    mcp_id="krri-road-cctv",
     display_text="수원역 근처 CCTV 띄워줘",
     expected_recipe_id="recipe_036",
+    expected_mcp_ids=("krri-map-location", "krri-road-cctv"),
     expected_tools=("asap-mcp-core/geo.geocode", "asap-mcp-core/road.getCctv"),
     enabled=True,
 )
@@ -67,7 +68,8 @@ def test_no_match_and_clarify_have_no_steps():
 
 
 def test_one_step_success():
-    q = DemoQuestion("iksan", "asap-mcp-core", "익산역 위치 보여줘", "recipe_001", ("asap-mcp-core/geo.geocode",), True)
+    q = DemoQuestion("iksan", "krri-map-location", "익산역 위치 보여줘", "recipe_001", ("krri-map-location",),
+                     ("asap-mcp-core/geo.geocode",), True)
     out = execute(resolve("SELECT recipe_001") + step("geocode_place", "geo.geocode") + result(), q)
     assert [(s["tool"], s["status"]) for s in out["steps"]] == [("geo.geocode", "success")]
     assert out["matches_expected_tools"] is True
@@ -122,5 +124,5 @@ def test_live_reply_has_no_request_response_and_explains_why():
 def test_output_has_no_recipe_id_expected_metadata_or_raw_commands():
     out = execute(resolve("SELECT recipe_036") + step("geocode_place", "geo.geocode") + result(commands=[{"op": "map.addLayer", "args": {"geojson": {}}}]))
     text = json.dumps(out, ensure_ascii=False)
-    for marker in ("recipe_036", '"expected_recipe_id"', '"expected_tools"', '"commands"', "geojson", "map.addLayer"):
+    for marker in ("recipe_036", '"expected_recipe_id"', '"expected_tools"', '"expected_mcp_ids"', '"commands"', "geojson", "map.addLayer"):
         assert marker not in text, marker

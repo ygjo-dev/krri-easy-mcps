@@ -1,25 +1,57 @@
-# Portal 전용 사용자-facing 표시 정보. server_id 로 technical catalog 와 join 한다.
+# Portal 전용 사용자-facing 표시 정보. mcp_id(= Gateway market group id)로 technical catalog 와 join 한다.
+#
+# MCP 단위 · 소속 Tool 의 source of truth 는 Gateway tool-groups.json 이다 (여기서 group 을 만들지 않는다).
+# 여기에는 Portal 화면 표시만 둔다. display_name · summary 를 비우면 Gateway group 의 name · description 을 쓴다.
+# category 는 Portal 분류다 (Gateway category 는 ASAP-web market tab 값이라 쓰지 않는다).
+# 순서는 Catalog 순서다. 여기 없는 Gateway group 은 뒤에 id 순으로, 분류 「기타」로 붙는다.
 #
 # 여기에 두지 않는 것: internal/Gateway endpoint, credential, Authorization header,
-# raw tools/list, tool schema. technical 정보의 source of truth 는 Gateway / live tools/list 다.
-servers:
-  asap-mcp-core:
-    display_name: ASAP Core MCP
-    summary: 장소 좌표, 철도 노선, 행정구역, CCTV, 인구, 선거구 등 공간 데이터를 조회합니다.
-    category: 공간정보
+# raw tools/list, tool schema, physical server id.
+mcps:
+  krri-map-location:
+    category: KRRI 정책현안 분석도구
     organization: KRRI ASAP
-  otp-router:
-    display_name: OTP 경로 탐색
-    summary: OpenTripPlanner 로 좌표 기반 대중교통 경로를 계산합니다.
-    category: 교통
+  krri-railway-network:
+    category: KRRI 정책현안 분석도구
     organization: KRRI ASAP
-  r5-server:
-    display_name: R5 접근성 분석
-    summary: 출발지에서 시간 안에 도달 가능한 영역(등시선)과 OD 통행시간을 계산합니다.
-    category: 교통
+  krri-admin-boundary:
+    category: KRRI 정책현안 분석도구
     organization: KRRI ASAP
-  web-search:
-    display_name: 웹 검색
-    summary: 인터넷에서 최신 공개 정보를 검색합니다.
-    category: 검색
+  krri-vworld-representative-data:
+    category: KRRI 정책현안 분석도구
     organization: KRRI ASAP
+  krri-population-statistics:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-road-cctv:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-ev-chargers:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-knowledge:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-bim-viewer:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-dem:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-assembly-pledges-2024:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  krri-election-pledges-2026:
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  web-research:
+    display_name: Web Search MCP
+    summary: 인터넷에서 최신 공개 정보를 검색하고 공개 웹 페이지 본문을 가져옵니다.
+    category: KRRI 정책현안 분석도구
+    organization: KRRI ASAP
+  # otp-router · r5-server 두 server 를 묶은 Gateway group 하나. 기관 metadata 가 확정되지 않아 엔진 이름만 적는다.
+  route-accessibility:
+    display_name: R5 기반 등시선도 MCP
+    summary: 출발지에서 정한 시간 안에 닿는 영역(등시선)과 OD 통행시간을 R5 로 계산하고, OTP 로 대중교통 경로를 찾습니다.
+    category: 교통 접근성 분석
+    organization: R5 / OTP

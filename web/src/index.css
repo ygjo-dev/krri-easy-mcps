@@ -11,6 +11,7 @@
   --muted: #8e9299;
   --accent: #4a9eff;
   --danger: #ff7a70;
+  --stage: #e3b341;
   --pill-bg: #ffffff;
   --pill-text: #141517;
   --focus: #8ab8ff;
@@ -83,6 +84,10 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
 .status-online .status-dot { background: var(--accent); }
 .status-offline .status-dot { background: var(--danger); }
 .status-unknown .status-dot { background: transparent; border: 1.5px solid var(--muted); }
+/* 개발 중은 runtime 상태가 아니라 단계다. 사용 불가(빨강) · 상태 모름(빈 점)과 다르게 보인다. */
+.status-development { color: var(--stage); }
+.status-development .status-dot { background: var(--stage); }
+.stage-note { color: var(--muted); font-size: 13px; }
 
 /* ── catalog ───────────────────────────────────────── */
 .hero { text-align: center; padding: 72px 0 64px; }

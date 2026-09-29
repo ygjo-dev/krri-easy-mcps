@@ -1,6 +1,6 @@
 """KRRI_ASAP Gateway 사용자별 MCP selection (도구함) boundary.
 
-**Gateway contract (ASAP-Gateway src/features/mcpMarket, 2026-09-22 read-only 확인)**
+**Gateway contract (ASAP-Gateway src/features/mcpMarket, 2026-09-29 read-only 재확인)**
 
 GET /api/me/mcp-selections           (권한 ANYONE)
 PUT /api/me/mcp-selections           (권한 ANYONE, body strict {groupIds?, toolRefs?, serverIds?})
@@ -15,6 +15,12 @@ PUT /api/me/mcp-selections           (권한 ANYONE, body strict {groupIds?, too
 사용자 식별: 로그인 사용자는 JWT sub. 없으면 guest cookie ``asap_mcp_guest`` (UUID v4,
 HttpOnly · SameSite=Lax · Path=/ · 1년). cookie 가 없거나 형식이 틀리면 Gateway 가 새 UUID 를
 만들어 Set-Cookie 로 준다. user id 는 "guest:<uuid>".
+
+**Portal 의 도구함 = groupIds.** 등록 · 해제는 ASAP-web MCP market 과 같게 ``{groupIds}`` 만 PUT 한다.
+그래서 두 화면이 같은 selection 을 같은 뜻으로 읽고 쓴다. 「등록됨」 판정도 Gateway market 의
+isApplied 와 같다: groupIds 가 있으면 그 목록, 없으면(legacy toolRefs 만 있는 selection) toolRefs 가
+group 의 정의 refs 를 모두 덮는 group. PUT 이 groupIds 만 실으므로 group 으로 안 펼쳐지는 explicit
+toolRefs(예: 이전 Portal 이 넣은 ``<serverId>/*``)는 첫 쓰기 때 위 판정으로 groupIds 가 되고 사라진다.
 
 Portal 은 Gateway guest UUID 를 자기 cookie(GUEST_COOKIE) 에 담아 두고, Gateway 를 부를 때만
 ``asap_mcp_guest`` cookie 로 바꿔 보낸다. 이 값은 JSON · 로그에 싣지 않는다.
@@ -64,44 +70,23 @@ def _selection(data) -> Selection:
     )
 
 
-# ── server 단위 도구함 ↔ Gateway selection ──────────────────────────────
+# ── logical MCP(group) 단위 도구함 ↔ Gateway selection ──────────────────
 
 
-def whole_server_ref(server_id: str) -> str:
-    return f"{server_id.lower()}/*"
+def _refs_cover(selected_refs: tuple[str, ...], group_refs: list[str]) -> bool:
+    """Gateway mcpMarket.service refsCoverGroup 과 같다."""
+    selected = set(selected_refs)
+    return bool(group_refs) and all(
+        ref in selected or f"{ref.split('/', 1)[0]}/*" in selected for ref in group_refs
+    )
 
 
-def _ref_server(ref: str) -> str:
-    return ref.split("/", 1)[0]
-
-
-def registered_server_ids(selection: Selection) -> set[str]:
-    """도구함에 「등록됨」 = 실행 범위에 "<serverId>/*" 가 있다 (server 전체)."""
-    return {_ref_server(r) for r in selection.tool_refs if r.endswith("/*")}
-
-
-def with_server(selection: Selection, server_id: str) -> Selection:
-    """등록: 지금 selection 에 "<serverId>/*" 하나만 더한다. group · 다른 ref 는 그대로."""
-    ref = whole_server_ref(server_id)
-    refs = selection.tool_refs if ref in selection.tool_refs else (*selection.tool_refs, ref)
-    return Selection(selection.group_ids, refs)
-
-
-def without_server(selection: Selection, server_id: str, group_servers: dict[str, list[str]]) -> Selection:
-    """해제: 그 server 의 ref 전부와, 그 server 를 담은 group 만 뺀다.
-
-    group 은 일부만 고를 수 없다. multi-server group (예: route-accessibility → otp-router, r5-server)
-    을 남기면 Gateway 가 정규화 때 otp-router ref 를 다시 펼친다. 그래서 group id 는 빼되,
-    Gateway 가 이미 펼쳐 둔 다른 server(r5-server) 의 ref 는 toolRefs 에 그대로 남아 범위가 유지된다.
-    """
-    sid = server_id.lower()
-    groups = tuple(g for g in selection.group_ids if sid not in [s.lower() for s in group_servers.get(g, [])])
-    refs = tuple(r for r in selection.tool_refs if _ref_server(r) != sid)
-    return Selection(groups, refs)
-
-
-def has_server(selection: Selection, server_id: str) -> bool:
-    return any(_ref_server(r) == server_id.lower() for r in selection.tool_refs)
+def registered_mcp_ids(selection: Selection, mcps: list[dict]) -> list[str]:
+    """도구함에 「등록됨」인 logical MCP id. Gateway market isApplied 와 같은 판정, catalog 순서."""
+    if selection.group_ids:
+        chosen = set(selection.group_ids)
+        return [m["mcp_id"] for m in mcps if m["mcp_id"] in chosen]
+    return [m["mcp_id"] for m in mcps if _refs_cover(selection.tool_refs, m["tool_refs"])]
 
 
 # ── clients ───────────────────────────────────────────────────────────
@@ -123,9 +108,9 @@ class RealSelectionClient:
     def get(self, guest_id: str | None) -> SelectionReply:
         return self._call("GET", None, guest_id)
 
-    def put(self, guest_id: str | None, selection: Selection) -> SelectionReply:
-        body = {"groupIds": list(selection.group_ids), "toolRefs": list(selection.tool_refs)}
-        return self._call("PUT", body, guest_id)
+    def put_groups(self, guest_id: str | None, group_ids: list[str]) -> SelectionReply:
+        """ASAP-web 과 같게 {groupIds} 만 보낸다. toolRefs 는 Gateway 가 group 에서 펼친다."""
+        return self._call("PUT", {"groupIds": list(group_ids)}, guest_id)
 
     def _call(self, method: str, body: dict | None, guest_id: str | None) -> SelectionReply:
         cookie = f"{GATEWAY_GUEST_COOKIE}={guest_id}" if valid_guest_id(guest_id) else None
@@ -169,7 +154,7 @@ def _issued_guest_id(set_cookies: list[str]) -> str | None:
 
 
 class MockSelectionClient:
-    """process-local. Gateway 처럼 guest id 가 없으면 새로 발급한다. 정규화는 소문자 · 중복 제거만."""
+    """process-local. Gateway 처럼 guest id 가 없으면 새로 발급한다. groupIds 만 저장한다 (중복 제거)."""
 
     source = SOURCE_MOCK
 
@@ -180,10 +165,9 @@ class MockSelectionClient:
         guest, issued = self._guest(guest_id)
         return SelectionReply(self.store.get(guest, Selection((), ())), issued)
 
-    def put(self, guest_id: str | None, selection: Selection) -> SelectionReply:
+    def put_groups(self, guest_id: str | None, group_ids: list[str]) -> SelectionReply:
         guest, issued = self._guest(guest_id)
-        refs = tuple(dict.fromkeys(r.lower() for r in selection.tool_refs))
-        self.store[guest] = Selection(tuple(dict.fromkeys(selection.group_ids)), refs)
+        self.store[guest] = Selection(tuple(dict.fromkeys(group_ids)), ())
         return SelectionReply(self.store[guest], issued)
 
     def _guest(self, guest_id):

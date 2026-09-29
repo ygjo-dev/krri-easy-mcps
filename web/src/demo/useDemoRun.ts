@@ -14,7 +14,7 @@ export interface DemoRun {
 }
 
 // 고정 질문 실행 상태. AI panel 과 「MCP 정보」 탭의 대화 예시가 같이 쓴다.
-export function useDemoRun(serverId: string): DemoRun {
+export function useDemoRun(mcpId: string): DemoRun {
   const [questions, setQuestions] = useState<DemoQuestion[] | null>(null)
   const [questionsError, setQuestionsError] = useState<string | null>(null)
   const [asked, setAsked] = useState<DemoQuestion | null>(null)
@@ -23,8 +23,8 @@ export function useDemoRun(serverId: string): DemoRun {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.listDemoQuestions(serverId).then(setQuestions, (e: Error) => setQuestionsError(e.message))
-  }, [serverId])
+    api.listDemoQuestions(mcpId).then(setQuestions, (e: Error) => setQuestionsError(e.message))
+  }, [mcpId])
 
   const run = useCallback((q: DemoQuestion) => {
     setAsked(q)

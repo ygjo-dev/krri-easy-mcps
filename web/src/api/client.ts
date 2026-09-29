@@ -28,14 +28,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listMcps: () => request<McpCard[]>('/api/mcps'),
-  getMcp: (serverId: string) => request<McpDetail>(`/api/mcps/${encodeURIComponent(serverId)}`),
-  listDemoQuestions: (serverId: string) =>
-    request<DemoQuestion[]>(`/api/mcps/${encodeURIComponent(serverId)}/demo-questions`),
+  getMcp: (mcpId: string) => request<McpDetail>(`/api/mcps/${encodeURIComponent(mcpId)}`),
+  listDemoQuestions: (mcpId: string) =>
+    request<DemoQuestion[]>(`/api/mcps/${encodeURIComponent(mcpId)}/demo-questions`),
   executeDemoQuestion: (questionId: string) =>
     request<Execution>(`/api/demo/questions/${encodeURIComponent(questionId)}/execute`, { method: 'POST' }),
   getToolbox: () => request<Toolbox>('/api/toolbox'),
-  addToToolbox: (serverId: string) =>
-    request<Toolbox>(`/api/toolbox/${encodeURIComponent(serverId)}`, { method: 'POST' }),
-  removeFromToolbox: (serverId: string) =>
-    request<Toolbox>(`/api/toolbox/${encodeURIComponent(serverId)}`, { method: 'DELETE' }),
+  addToToolbox: (mcpId: string) =>
+    request<Toolbox>(`/api/toolbox/${encodeURIComponent(mcpId)}`, { method: 'POST' }),
+  removeFromToolbox: (mcpId: string) =>
+    request<Toolbox>(`/api/toolbox/${encodeURIComponent(mcpId)}`, { method: 'DELETE' }),
 }

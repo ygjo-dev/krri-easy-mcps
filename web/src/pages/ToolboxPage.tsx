@@ -31,7 +31,7 @@ export default function ToolboxPage() {
           <p className="toolbar-count">등록한 MCP <strong>{mcps.length}</strong></p>
           <ul className="card-grid">
             {mcps.map((m) => (
-              <li key={m.server_id}>
+              <li key={m.mcp_id}>
                 <McpCard mcp={m} action="remove" />
               </li>
             ))}

@@ -3,35 +3,42 @@
 # 실행 contract 가 아니다. 실행 시 BFF 는 display_text 만 agentic_ai 기존
 # POST /chat/stream 에 발화로 보낸다. Resolve 는 agentic_ai 가 한다.
 #
+#   mcp_id              이 질문을 대화 예시로 보여 줄 logical MCP (상세 화면 하나). 개발 중 MCP 는 안 된다
 #   expected_recipe_id  resolve 가 이 recipe 를 골랐는지 검증·설명하기 위한 값
-#   expected_tools      실행이 이 tool 들을 거쳤는지 검증·설명하기 위한 값 (server_id/tool)
+#   expected_mcp_ids    실행이 거칠 것으로 예상하는 logical MCP. mcp_id 를 포함한다.
+#                       한 recipe 가 여러 MCP 의 Tool 을 쓸 수 있다 (부산역 = 위치 + 행정구역)
+#   expected_tools      실행이 이 tool 들을 이 순서로 거쳤는지 검증·설명하기 위한 값 (server_id/tool)
 #
 # 발화와 expected_recipe_id 는 agentic_ai 평가 정답표
 # dev/evaluation/inputs/test_suites/test_suite_v1.yaml 의 case 를 그대로 옮겼다
 # (2026-09-22, HEAD 3dffdcb). expected_tools 는 해당 recipe 의 execution.workflow 에서 읽었다.
-# 둘 다 브라우저로 내보내지 않는다.
+# expected_* 는 브라우저로 내보내지 않는다. expected_mcp_ids 는 실행 단계의 Tool 옆에 MCP 이름을 붙이는 데만 쓴다.
 questions:
   - question_id: iksan-station-location     # suite v1 case 1
-    mcp_server_id: asap-mcp-core
+    mcp_id: krri-map-location
     display_text: 익산역 위치 보여줘
     expected_recipe_id: recipe_001
+    expected_mcp_ids: [krri-map-location]
     expected_tools: [asap-mcp-core/geo.geocode]
     enabled: true
   - question_id: cheonan-station-lines      # suite v1 case 3
-    mcp_server_id: asap-mcp-core
+    mcp_id: krri-railway-network
     display_text: 천안역에 무슨 노선 다녀
     expected_recipe_id: recipe_003
+    expected_mcp_ids: [krri-railway-network]
     expected_tools: [asap-mcp-core/geo.getRailwayLines]
     enabled: true
   - question_id: busan-station-district     # suite v1 case 13
-    mcp_server_id: asap-mcp-core
+    mcp_id: krri-admin-boundary
     display_text: 부산역이 무슨 구에 있어
     expected_recipe_id: recipe_034
+    expected_mcp_ids: [krri-map-location, krri-admin-boundary]
     expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/adminBoundary.findBoundaryByPoint]
     enabled: true
   - question_id: suwon-station-cctv         # suite v1 case 14
-    mcp_server_id: asap-mcp-core
+    mcp_id: krri-road-cctv
     display_text: 수원역 근처 CCTV 띄워줘
     expected_recipe_id: recipe_036
+    expected_mcp_ids: [krri-map-location, krri-road-cctv]
     expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/road.getCctv]
     enabled: true

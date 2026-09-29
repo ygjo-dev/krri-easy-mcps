@@ -31,7 +31,7 @@ export default function App() {
       <main className="container">
         <Routes>
           <Route path="/" element={<CatalogPage />} />
-          <Route path="/mcps/:serverId" element={<McpDetailPage />} />
+          <Route path="/mcps/:mcpId" element={<McpDetailPage />} />
           <Route path="/toolbox" element={<ToolboxPage />} />
           <Route
             path="*"

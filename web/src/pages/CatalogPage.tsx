@@ -30,7 +30,7 @@ export default function CatalogPage() {
       (c) =>
         (!category || c.category === category) &&
         (!q ||
-          [c.display_name, c.summary, c.category, c.organization, c.server_id].some((v) => v.toLowerCase().includes(q))),
+          [c.display_name, c.summary, c.category, c.organization, c.mcp_id].some((v) => v.toLowerCase().includes(q))),
     )
   }, [cards, query, category])
 
@@ -81,7 +81,7 @@ export default function CatalogPage() {
         </div>
       )}
       {!error && !cards && <div className="state-block muted">MCP 목록을 불러오는 중…</div>}
-      {cards && <MockNotice source={cards[0]?.source ?? ''} />}
+      {cards && <MockNotice source={cards.some((c) => c.source === 'mock') ? 'mock' : ''} />}
       {cards && visible.length === 0 && (
         <div className="state-block">
           <p>조건에 맞는 MCP 가 없습니다.</p>
@@ -100,7 +100,7 @@ export default function CatalogPage() {
       {cards && visible.length > 0 && (
         <ul className="card-grid">
           {visible.map((c) => (
-            <li key={c.server_id}>
+            <li key={c.mcp_id}>
               <McpCard mcp={c} action="card" />
             </li>
           ))}

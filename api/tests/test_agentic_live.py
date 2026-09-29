@@ -212,7 +212,7 @@ def test_execute_live_response_has_no_internal_or_trusted_values():
     c = live_app(Agentic(sse(CCTV_EVENTS)))
     body = c.post("/api/demo/questions/suwon-station-cctv/execute").json()
     text = json.dumps(body, ensure_ascii=False)
-    for marker in ("recipe_036", '"expected_recipe_id"', '"expected_tools"', '"commands"', "geojson", "map.addLayer",
+    for marker in ("recipe_036", '"expected_recipe_id"', '"expected_tools"', '"expected_mcp_ids"', '"commands"', "geojson", "map.addLayer",
                    BASE_URL, "agentic.internal", "telemetry", "future", "(mock"):
         assert marker not in text, marker
     # agentic 의 result.status 는 public DTO 로 옮기지 않는다 (steps[].status 는 기존 DTO 칸)

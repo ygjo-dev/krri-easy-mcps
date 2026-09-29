@@ -1,0 +1,27 @@
+# 개발 중인 MCP. Portal 이 소유한 catalog metadata 이고, Gateway 에 server · group 이 아직 없다.
+#
+# - Catalog · 상세에 「개발 중」으로만 보인다. Tool 목록 · 상태가 없다 (0개 · 사용 불가가 아니다).
+# - 도구함 등록 · AI로 사용해보기 대상이 아니다 (BFF 가 막는다). 대화 예시를 붙이면 BFF 가 뜨지 않는다.
+# - mcp_id 는 Portal 이 정한 안정 id 다. Gateway 에 같은 id 의 group 이 생기면 BFF 는 이 entry 를 무시하고
+#   Gateway group 을 쓴다. 공개되면 여기서 지우고 presentation.yaml 로 옮긴다.
+#
+# stage: development 만 있다.
+planned:
+  - mcp_id: gtfs-accessibility-aro
+    display_name: GTFS 기반 접근성 분석 MCP
+    summary: GTFS 대중교통 운행 정보를 바탕으로 접근성을 분석하는 MCP 입니다.
+    category: 교통 접근성 분석
+    organization: 아로
+    stage: development
+  - mcp_id: gtfs-accessibility-university
+    display_name: GTFS 기반 접근성 분석 MCP
+    summary: GTFS 대중교통 운행 정보를 바탕으로 접근성을 분석하는 MCP 입니다.
+    category: 교통 접근성 분석
+    organization: 시립대
+    stage: development
+  - mcp_id: nodelink-accessibility-vwl
+    display_name: 노드링크 기반 접근성 분석 MCP
+    summary: 도로 노드·링크 네트워크를 바탕으로 접근성을 분석하는 MCP 입니다.
+    category: 교통 접근성 분석
+    organization: VWL
+    stage: development

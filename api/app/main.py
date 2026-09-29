@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from .clients.agentic_ai import AgenticAiUnavailable, make_agentic_ai_client
 from .clients.gateway import GatewayUnavailable, make_gateway_client
 from .clients.selection import make_selection_client
-from .metadata import load_demo_questions, load_presentation
+from .metadata import load_demo_questions, load_planned_mcps, load_presentation
 from .routes import catalog, demo, toolbox
 from .settings import Settings, load_settings
 
@@ -23,7 +23,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(title="KRRI EASY MCPs BFF", version="0.1.0")
     app.state.presentation = load_presentation(settings.config_dir)
-    app.state.demo_questions = load_demo_questions(settings.config_dir)
+    app.state.planned_mcps = load_planned_mcps(settings.config_dir)
+    app.state.demo_questions = load_demo_questions(settings.config_dir, app.state.planned_mcps)
     app.state.gateway = make_gateway_client(
         settings.gateway_mode, settings.gateway_base_url, settings.gateway_cache_seconds
     )

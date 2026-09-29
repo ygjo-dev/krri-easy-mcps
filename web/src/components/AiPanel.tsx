@@ -4,7 +4,7 @@ import { ChevronIcon } from './Icons'
 
 // PlayMCP AI 채팅 panel 의 배치를 따른다: 머리 · 대화(질문 말풍선 → TOOL 호출 → 답) · 아래 「대화 예시」.
 // 자유 입력창은 두지 않는다. 준비된 질문만 실행한다.
-export default function AiPanel({ demo, mcpName }: { demo: DemoRun; mcpName: string }) {
+export default function AiPanel({ demo }: { demo: DemoRun }) {
   const [toolsOpen, setToolsOpen] = useState(true)
   const [examplesOpen, setExamplesOpen] = useState(true)
   const { questions, questionsError, asked, running, result, error, run, reset } = demo
@@ -44,7 +44,10 @@ export default function AiPanel({ demo, mcpName }: { demo: DemoRun; mcpName: str
                     <span className="step-mark" aria-hidden="true">{s.status === 'success' ? '✓' : '!'}</span>
                     <span className="step-text">
                       <code>{s.tool}</code>
-                      <span className="step-sub">{mcpName} · {s.status === 'success' ? '성공' : '실패'}</span>
+                      <span className="step-sub">
+                        {s.mcp_name && `${s.mcp_name} · `}
+                        {s.status === 'success' ? '성공' : '실패'}
+                      </span>
                     </span>
                   </li>
                 ))}

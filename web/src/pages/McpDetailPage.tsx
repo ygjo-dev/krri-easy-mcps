@@ -10,23 +10,23 @@ import ToolList from '../components/ToolList'
 import { useDemoRun } from '../demo/useDemoRun'
 import type { McpDetail } from '../types/api'
 
-// serverId 가 바뀌면 key 로 새로 그려 이전 MCP 의 상태를 남기지 않는다.
+// mcpId 가 바뀌면 key 로 새로 그려 이전 MCP 의 상태를 남기지 않는다.
 export default function McpDetailPage() {
-  const { serverId = '' } = useParams()
-  return <McpDetailView key={serverId} serverId={serverId} />
+  const { mcpId = '' } = useParams()
+  return <McpDetailView key={mcpId} mcpId={mcpId} />
 }
 
 type Tab = 'tools' | 'info'
 
-function McpDetailView({ serverId }: { serverId: string }) {
+function McpDetailView({ mcpId }: { mcpId: string }) {
   const [mcp, setMcp] = useState<McpDetail | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
   const [tab, setTab] = useState<Tab>('tools')
-  const demo = useDemoRun(serverId)
+  const demo = useDemoRun(mcpId)
 
   useEffect(() => {
-    api.getMcp(serverId).then(setMcp, (e: ApiError) => setError(e))
-  }, [serverId])
+    api.getMcp(mcpId).then(setMcp, (e: ApiError) => setError(e))
+  }, [mcpId])
 
   if (error) {
     return (
@@ -37,6 +37,7 @@ function McpDetailView({ serverId }: { serverId: string }) {
     )
   }
   if (!mcp) return <div className="state-block muted">MCP 정보를 불러오는 중…</div>
+  const developing = mcp.lifecycle === 'development'
 
   return (
     <>
@@ -49,17 +50,21 @@ function McpDetailView({ serverId }: { serverId: string }) {
       <div className="detail-layout">
         <div className="detail-main">
           <section className="detail-identity">
-            <McpIcon serverId={mcp.server_id} size="lg" />
+            <McpIcon mcpId={mcp.mcp_id} size="lg" />
             <div>
               <h1>{mcp.display_name}</h1>
-              <ToolboxButton serverId={mcp.server_id} variant="detail" />
+              {developing ? (
+                <p className="stage-note">개발 중인 MCP 입니다. 공개되면 도구함에 등록할 수 있습니다.</p>
+              ) : (
+                <ToolboxButton mcpId={mcp.mcp_id} variant="detail" />
+              )}
             </div>
           </section>
 
           <dl className="stats">
             <div>
               <dt>MCP 상태</dt>
-              <dd><StatusBadge status={mcp.status} /></dd>
+              <dd><StatusBadge mcp={mcp} /></dd>
             </div>
             <div>
               <dt>제공</dt>
@@ -67,7 +72,7 @@ function McpDetailView({ serverId }: { serverId: string }) {
             </div>
             <div>
               <dt>Tools</dt>
-              <dd>{mcp.tools.length}</dd>
+              <dd>{developing ? '—' : mcp.tools.length}</dd>
             </div>
             <div>
               <dt>분류</dt>
@@ -80,7 +85,7 @@ function McpDetailView({ serverId }: { serverId: string }) {
 
           <div className="tabs" role="tablist" aria-label="MCP 상세">
             <button type="button" role="tab" id="tab-tools" aria-controls="panel-tools" aria-selected={tab === 'tools'} onClick={() => setTab('tools')}>
-              Tool 목록 {mcp.tools.length}
+              Tool 목록{!developing && ` ${mcp.tools.length}`}
             </button>
             <button type="button" role="tab" id="tab-info" aria-controls="panel-info" aria-selected={tab === 'info'} onClick={() => setTab('info')}>
               MCP 정보
@@ -89,7 +94,11 @@ function McpDetailView({ serverId }: { serverId: string }) {
 
           {tab === 'tools' && (
             <div role="tabpanel" id="panel-tools" aria-labelledby="tab-tools">
-              <ToolList tools={mcp.tools} />
+              {developing ? (
+                <p className="empty-inline">개발 중인 MCP 입니다. Tool 목록은 공개된 뒤에 볼 수 있습니다.</p>
+              ) : (
+                <ToolList tools={mcp.tools} />
+              )}
             </div>
           )}
           {tab === 'info' && (
@@ -97,8 +106,8 @@ function McpDetailView({ serverId }: { serverId: string }) {
               <dl>
                 <dt>Tools</dt>
                 <dd className="mono-list">{mcp.tools.length > 0 ? mcp.tools.map((t) => t.name).join(', ') : '—'}</dd>
-                <dt>서버 ID</dt>
-                <dd><code>{mcp.server_id}</code>{mcp.technical_name !== mcp.server_id && <span className="muted"> · {mcp.technical_name}</span>}</dd>
+                <dt>MCP ID</dt>
+                <dd><code>{mcp.mcp_id}</code></dd>
                 <dt>대화 예시</dt>
                 <dd>
                   {demo.questions && demo.questions.length > 0 ? (
@@ -121,7 +130,20 @@ function McpDetailView({ serverId }: { serverId: string }) {
         </div>
 
         <div className="detail-side">
-          <AiPanel demo={demo} mcpName={mcp.display_name} />
+          {developing ? (
+            <aside className="ai-panel" aria-label="AI로 사용해보기">
+              <header className="ai-head">
+                <strong>AI로 사용해보기</strong>
+              </header>
+              <div className="ai-body">
+                <div className="ai-intro">
+                  <p>개발 중인 MCP 는 아직 AI 로 실행할 수 없습니다.</p>
+                </div>
+              </div>
+            </aside>
+          ) : (
+            <AiPanel demo={demo} />
+          )}
         </div>
       </div>
     </>

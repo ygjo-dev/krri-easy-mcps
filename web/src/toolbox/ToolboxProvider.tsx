@@ -26,22 +26,22 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
     load()
   }, [load])
 
-  const change = useCallback(async (serverId: string, call: (id: string) => Promise<Toolbox>) => {
-    setPending((p) => new Set(p).add(serverId))
+  const change = useCallback(async (mcpId: string, call: (id: string) => Promise<Toolbox>) => {
+    setPending((p) => new Set(p).add(mcpId))
     setErrors((prev) => {
       const next = { ...prev }
-      delete next[serverId]
+      delete next[mcpId]
       return next
     })
     try {
-      setToolbox(await call(serverId))
+      setToolbox(await call(mcpId))
       setLoadError(null)
     } catch (e) {
-      setErrors((prev) => ({ ...prev, [serverId]: (e as Error).message }))
+      setErrors((prev) => ({ ...prev, [mcpId]: (e as Error).message }))
     } finally {
       setPending((p) => {
         const next = new Set(p)
-        next.delete(serverId)
+        next.delete(mcpId)
         return next
       })
     }
@@ -49,7 +49,7 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ToolboxState>(
     () => ({
-      registered: toolbox ? new Set(toolbox.server_ids) : null,
+      registered: toolbox ? new Set(toolbox.mcp_ids) : null,
       mcps: toolbox?.mcps ?? [],
       loadError,
       pending,

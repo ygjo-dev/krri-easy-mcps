@@ -1,21 +1,16 @@
-"""도구함. 이미 KRRI 에 있는 MCP 를 사용자 selection 에 넣고 빼는 것 (신규 MCP server 등록이 아니다).
+"""도구함. 이미 KRRI 에 있는 logical MCP 를 사용자 selection 에 넣고 빼는 것 (신규 MCP server 등록이 아니다).
 
-브라우저 contract 는 server_id 뿐이다. groupIds · toolRefs · wildcard 계산은 여기서 끝난다.
+브라우저 contract 는 mcp_id 뿐이다. Gateway selection 에는 그 mcp_id 가 groupId 로 들어간다
+(ASAP-web MCP market 과 같은 표현). groupIds · toolRefs 계산은 여기서 끝난다.
+개발 중 MCP 는 등록 · 해제 대상이 아니다 (409, Gateway 를 부르지 않는다).
 사용자 식별은 Gateway guest id 를 담은 Portal cookie(GUEST_COOKIE) 하나다. 그 값은 JSON 에 싣지 않는다.
 """
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
-from ..clients.selection import (
-    SelectionReply,
-    has_server,
-    registered_server_ids,
-    valid_guest_id,
-    with_server,
-    without_server,
-)
-from .catalog import card
+from ..clients.selection import SelectionReply, registered_mcp_ids, valid_guest_id
+from .catalog import NOT_FOUND_DETAIL, card, find_planned, ordered_mcps
 
 router = APIRouter(prefix="/api/toolbox", tags=["toolbox"])
 
@@ -23,6 +18,7 @@ GUEST_COOKIE = "kem_gateway_guest"
 GUEST_COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # Gateway asap_mcp_guest 와 같다.
 
 NOT_APPLIED_DETAIL = "Gateway 가 이 MCP 를 도구함에 반영하지 않았습니다."
+IN_DEVELOPMENT_DETAIL = "개발 중인 MCP 는 도구함에 등록할 수 없습니다."
 
 
 class _Session:
@@ -47,26 +43,35 @@ class _Session:
             )
 
 
-def _body(request: Request, selection) -> dict:
+def _body(request: Request, registered: list[str]) -> dict:
     state = request.app.state
-    registered = registered_server_ids(selection)
-    servers = [s for s in state.gateway.list_servers() if s["server_id"].lower() in registered]
+    by_id = {m["mcp_id"]: m for m in state.gateway.list_mcps()}
     return {
-        "server_ids": [s["server_id"] for s in servers],
-        "mcps": [card(s, state.presentation, state.gateway.source) for s in servers],
+        "mcp_ids": registered,
+        "mcps": [card(by_id[i], state.presentation, state.gateway.source) for i in registered],
     }
 
 
-def _not_applied(session: _Session) -> JSONResponse:
+def _registered(request: Request, selection) -> list[str]:
+    state = request.app.state
+    return registered_mcp_ids(selection, ordered_mcps(state.gateway.list_mcps(), state.presentation))
+
+
+def _refused(session: _Session, status_code: int, detail: str) -> JSONResponse:
     # HTTPException 으로 올리면 이번에 발급된 guest cookie 가 응답에서 빠진다.
-    response = JSONResponse(status_code=409, content={"detail": NOT_APPLIED_DETAIL})
+    response = JSONResponse(status_code=status_code, content={"detail": detail})
     session.remember(response)
     return response
 
 
-def _require_server(request: Request, server_id: str):
-    if request.app.state.gateway.get_server(server_id) is None:
-        raise HTTPException(status_code=404, detail="MCP 를 찾을 수 없습니다.")
+def _require_available(request: Request, mcp_id: str):
+    """Gateway logical MCP 만 통과. 개발 중이면 409, 없으면 404. selection 을 읽기 전에 막는다."""
+    state = request.app.state
+    if state.gateway.get_mcp(mcp_id) is not None:
+        return
+    if find_planned(state, mcp_id) is not None:
+        raise HTTPException(status_code=409, detail=IN_DEVELOPMENT_DETAIL)
+    raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
 
 
 @router.get("")
@@ -74,34 +79,33 @@ def get_toolbox(request: Request, response: Response) -> dict:
     session = _Session(request)
     selection = session.take(request.app.state.selection.get(session.guest_id))
     session.remember(response)
-    return _body(request, selection)
+    return _body(request, _registered(request, selection))
 
 
-@router.post("/{server_id}")
-def add_to_toolbox(server_id: str, request: Request, response: Response):
-    _require_server(request, server_id)
+@router.post("/{mcp_id}")
+def add_to_toolbox(mcp_id: str, request: Request, response: Response):
+    _require_available(request, mcp_id)
     client = request.app.state.selection
     session = _Session(request)
-    selection = session.take(client.get(session.guest_id))
-    if server_id.lower() not in registered_server_ids(selection):
-        selection = session.take(client.put(session.guest_id, with_server(selection, server_id)))
-        if server_id.lower() not in registered_server_ids(selection):
-            return _not_applied(session)
+    registered = _registered(request, session.take(client.get(session.guest_id)))
+    if mcp_id not in registered:
+        registered = _registered(request, session.take(client.put_groups(session.guest_id, [*registered, mcp_id])))
+        if mcp_id not in registered:
+            return _refused(session, 409, NOT_APPLIED_DETAIL)
     session.remember(response)
-    return _body(request, selection)
+    return _body(request, registered)
 
 
-@router.delete("/{server_id}")
-def remove_from_toolbox(server_id: str, request: Request, response: Response):
-    _require_server(request, server_id)
-    state = request.app.state
+@router.delete("/{mcp_id}")
+def remove_from_toolbox(mcp_id: str, request: Request, response: Response):
+    _require_available(request, mcp_id)
+    client = request.app.state.selection
     session = _Session(request)
-    selection = session.take(state.selection.get(session.guest_id))
-    if has_server(selection, server_id):
-        selection = session.take(
-            state.selection.put(session.guest_id, without_server(selection, server_id, state.gateway.group_servers()))
-        )
-        if has_server(selection, server_id):
-            return _not_applied(session)
+    registered = _registered(request, session.take(client.get(session.guest_id)))
+    if mcp_id in registered:
+        rest = [i for i in registered if i != mcp_id]
+        registered = _registered(request, session.take(client.put_groups(session.guest_id, rest)))
+        if mcp_id in registered:
+            return _refused(session, 409, NOT_APPLIED_DETAIL)
     session.remember(response)
-    return _body(request, selection)
+    return _body(request, registered)

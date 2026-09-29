@@ -1,29 +1,84 @@
-"""MCP catalog / detail. technical(Gateway client) + presentation(config) 을 server_id 로 join.
+"""MCP catalog / detail. 사용자-facing 단위는 logical MCP (mcp_id) 다.
 
-presentation.yaml 에 entry 가 없는 server 도 숨기지 않는다. technical 값으로 채운다.
+두 출처를 한 목록으로 합친다.
+- Gateway logical MCP (lifecycle "available"): Gateway market group + presentation.yaml 을 mcp_id 로 join.
+  presentation 에 entry 가 없는 group 도 숨기지 않는다. Gateway 값으로 채우고 분류는 「기타」.
+- planned MCP (lifecycle "development"): planned_mcps.yaml. Gateway 에 없다. status · tool_count 가 null 이다
+  (Tool 0개 · 사용 불가가 아니라 아직 없는 것). 같은 id 의 Gateway group 이 있으면 Gateway 쪽을 쓴다.
+
+브라우저로 physical server id · toolRefs 를 내보내지 않는다.
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
+
+from ..metadata import PlannedMcp
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/mcps", tags=["catalog"])
 
 FALLBACK_CATEGORY = "기타"
+LIFECYCLE_AVAILABLE = "available"
+LIFECYCLE_DEVELOPMENT = "development"
+SOURCE_PLANNED = "planned"
+
+NOT_FOUND_DETAIL = "MCP 를 찾을 수 없습니다."
 
 
-def card(server: dict, presentation: dict, source: str) -> dict:
-    p = presentation.get(server["server_id"]) or {}
-    technical_name = server.get("name") or server["server_id"]
+def card(mcp: dict, presentation: dict, source: str) -> dict:
+    """Gateway logical MCP → 브라우저 카드."""
+    p = presentation.get(mcp["mcp_id"]) or {}
     return {
-        "server_id": server["server_id"],
-        "technical_name": technical_name,
-        "display_name": p.get("display_name") or technical_name,
-        "summary": p.get("summary") or server.get("description") or "",
+        "mcp_id": mcp["mcp_id"],
+        "display_name": p.get("display_name") or mcp.get("name") or mcp["mcp_id"],
+        "summary": p.get("summary") or mcp.get("description") or "",
         "category": p.get("category") or FALLBACK_CATEGORY,
         "organization": p.get("organization") or "",
-        "status": server.get("status") or "unknown",
-        "tool_count": len(server.get("tools") or []),
+        "lifecycle": LIFECYCLE_AVAILABLE,
+        "status": mcp.get("status") or "unknown",
+        "tool_count": len(mcp.get("tools") or []),
         "source": source,
     }
+
+
+def planned_card(mcp: PlannedMcp) -> dict:
+    """개발 중 MCP → 브라우저 카드. Gateway 값처럼 보이는 칸(status · tool_count)은 null."""
+    return {
+        "mcp_id": mcp.mcp_id,
+        "display_name": mcp.display_name,
+        "summary": mcp.summary,
+        "category": mcp.category,
+        "organization": mcp.organization,
+        "lifecycle": LIFECYCLE_DEVELOPMENT,
+        "status": None,
+        "tool_count": None,
+        "source": SOURCE_PLANNED,
+    }
+
+
+def ordered_mcps(mcps: list[dict], presentation: dict) -> list[dict]:
+    """presentation.yaml 순서, 거기 없는 group 은 뒤에 id 순."""
+    rank = {mcp_id: i for i, mcp_id in enumerate(presentation)}
+    return sorted(mcps, key=lambda m: (rank.get(m["mcp_id"], len(rank)), m["mcp_id"]))
+
+
+def planned_only(state, mcps: list[dict]) -> list[PlannedMcp]:
+    """Gateway 에 아직 없는 planned MCP. 같은 id 의 group 이 생겼으면 planned 를 버린다."""
+    live_ids = {m["mcp_id"] for m in mcps}
+    shadowed = [p.mcp_id for p in state.planned_mcps.values() if p.mcp_id in live_ids]
+    if shadowed:
+        logger.warning("planned MCP ids now exist in Gateway, planned entries ignored: %s", shadowed)
+    return [p for p in state.planned_mcps.values() if p.mcp_id not in live_ids]
+
+
+def find_planned(state, mcp_id: str) -> PlannedMcp | None:
+    """Gateway 에 없는 개발 중 MCP 면 그것을, 아니면 None. Gateway 를 읽는다 (cache 됨)."""
+    planned = state.planned_mcps.get(mcp_id)
+    if planned is None or state.gateway.get_mcp(mcp_id) is not None:
+        return None
+    return planned
 
 
 def _type_label(spec: dict) -> str:
@@ -62,22 +117,28 @@ def _parameters(input_schema: dict) -> list[dict]:
 @router.get("")
 def list_mcps(request: Request) -> list[dict]:
     state = request.app.state
-    return [card(s, state.presentation, state.gateway.source) for s in state.gateway.list_servers()]
+    mcps = state.gateway.list_mcps()
+    return [card(m, state.presentation, state.gateway.source) for m in ordered_mcps(mcps, state.presentation)] + [
+        planned_card(p) for p in planned_only(state, mcps)
+    ]
 
 
-@router.get("/{server_id}")
-def get_mcp(server_id: str, request: Request) -> dict:
+@router.get("/{mcp_id}")
+def get_mcp(mcp_id: str, request: Request) -> dict:
     state = request.app.state
-    server = state.gateway.get_server(server_id)
-    if server is None:
-        raise HTTPException(status_code=404, detail="MCP 를 찾을 수 없습니다.")
-    detail = card(server, state.presentation, state.gateway.source)
+    mcp = state.gateway.get_mcp(mcp_id)
+    if mcp is None:
+        planned = find_planned(state, mcp_id)
+        if planned is None:
+            raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+        return {**planned_card(planned), "tools": []}
+    detail = card(mcp, state.presentation, state.gateway.source)
     detail["tools"] = [
         {
             "name": t["name"],
             "description": t.get("description") or "",
             "parameters": _parameters(t.get("input_schema") or {}),
         }
-        for t in server.get("tools") or []
+        for t in mcp.get("tools") or []
     ]
     return detail

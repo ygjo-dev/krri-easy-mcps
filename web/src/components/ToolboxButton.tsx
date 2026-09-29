@@ -5,20 +5,20 @@ import { useToolbox } from '../toolbox/context'
 // remove   도구함 카드. 「해제」
 type Variant = 'card' | 'detail' | 'remove'
 
-export default function ToolboxButton({ serverId, variant }: { serverId: string; variant: Variant }) {
+export default function ToolboxButton({ mcpId, variant }: { mcpId: string; variant: Variant }) {
   const { registered, pending, errors, add, remove } = useToolbox()
-  const busy = pending.has(serverId)
-  const error = errors[serverId]
+  const busy = pending.has(mcpId)
+  const error = errors[mcpId]
 
   if (registered === null) return null
-  const isRegistered = registered.has(serverId)
+  const isRegistered = registered.has(mcpId)
 
   let control
   if (isRegistered && variant === 'card') {
     control = <span className="pill pill-applied">✓ 등록됨</span>
   } else if (isRegistered) {
     control = (
-      <button type="button" className="pill pill-outline" onClick={() => remove(serverId)} disabled={busy} aria-busy={busy}>
+      <button type="button" className="pill pill-outline" onClick={() => remove(mcpId)} disabled={busy} aria-busy={busy}>
         {busy ? '해제 중…' : variant === 'detail' ? '✓ 도구함에서 해제' : '해제'}
       </button>
     )
@@ -27,7 +27,7 @@ export default function ToolboxButton({ serverId, variant }: { serverId: string;
       <button
         type="button"
         className={`pill ${variant === 'detail' ? 'pill-primary' : 'pill-ghost'}`}
-        onClick={() => add(serverId)}
+        onClick={() => add(mcpId)}
         disabled={busy}
         aria-busy={busy}
       >
