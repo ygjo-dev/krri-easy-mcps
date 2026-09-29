@@ -8,8 +8,13 @@ Portal 은 tool 이름 등을 보고 group 을 만들거나 고치지 않는다.
 Portal 내부 technical model (route 는 이 모양만 안다):
 
     {"mcp_id", "name", "description", "status": "online|offline|unknown", "enabled",
+     "long_description", "tags": [...], "author", "updated_at",
+     "connected_datasets": [{"name", "description", "geometry_kind"}],
      "server_ids": [...], "tool_refs": [...],          # physical. BFF 안에서만 쓰고 브라우저로 안 나간다
      "tools": [{"name", "description", "input_schema", "server_id"}]}
+
+MCP 자체 정보(이름 · 설명 · longDescription · tags · layerDatasets · author)는 Gateway group 이 source 다.
+Tool 정보(name · description · inputSchema)는 /api/tools 가 source 다. 둘을 섞지 않는다.
 
 한 logical MCP 는 여러 server(route-accessibility → otp-router, r5-server)와 한 server 의 일부
 Tool(krri-road-cctv → asap-mcp-core/road.getCctv)을 가질 수 있다.
@@ -30,7 +35,13 @@ GET /api/tools          (권한 ANYONE)
 
 GET /api/mcp-market     (권한 ANYONE)
     tool-group(market) catalog. item 하나가 Portal MCP 하나다. id · name · description ·
-    serverIds · toolRefs(정의) · resolvedToolRefs(지금 Tool 로 펼친 값) · status · enabled 를 쓴다.
+    serverIds · toolRefs(정의) · resolvedToolRefs(지금 Tool 로 펼친 값) · status · enabled 와
+    MCP 상세 정보 longDescription · tags · layerDatasets · author · updatedAt 을 쓴다.
+    tags 에서 Gateway 가 붙이는 status 값(ready · error …)은 뺀다 (KRRI MCPs 화면과 같다).
+    layerDatasets 는 이름 · 설명 · geometryKind 만 남긴다 (toolRef · input · style 은 Data Library 실행 설정).
+    updatedAt 은 group server 들의 마지막 상태 확인 시각이다 (metadata 편집 시각이 아니다).
+    쓰지 않는 것: features (전부 "<tool>: 설명" 이라 /api/tools Tool 목록과 겹친다), version (늘 "group"),
+    rating · downloads (고정값), lastError (내부 주소가 들어 있다), contact (지금 어느 group 에도 없다).
     Gateway 는 어떤 group 에도 안 걸린 server 에 id=server_id 인 fallback group 을 만든다.
     그 group 도 그대로 MCP 하나로 보인다. category 는 ASAP-web market tab(추천/일반…) 값이라 안 쓴다.
     application behavior 가 있다: 요청마다 guest cookie(asap_mcp_guest) 를 새로 발급하고
@@ -117,6 +128,19 @@ MOCK_TOOLS: list[dict] = [
         },
     },
     {
+        "serverId": "asap-mcp-core",
+        "name": "ev.searchStations",
+        "description": "bbox, 줌, 장소명, 지역코드, 상태, 충전기 유형으로 전기차 충전소 또는 클러스터를 조회",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "장소명"},
+                "zoom": {"type": "number"},
+                "cluster": {"type": "boolean", "default": True},
+            },
+        },
+    },
+    {
         "serverId": "otp-router",
         "name": "otp_plan_trip",
         "description": "OTP로 좌표 기반 경로를 계산한다. date / time_kst 는 Asia/Seoul (KST) 기준.",
@@ -150,7 +174,9 @@ MOCK_TOOLS: list[dict] = [
 ]
 
 
-def _mock_group(group_id: str, name: str, description: str, tool_refs: list[str], status: str = "ready") -> dict:
+def _mock_group(group_id: str, name: str, description: str, tool_refs: list[str], status: str = "ready",
+                **metadata) -> dict:
+    """market item 모양. metadata 는 longDescription · tags · layerDatasets 처럼 Gateway 가 싣는 칸 그대로."""
     resolved = [
         f"{t['serverId']}/{t['name']}".lower()
         for t in MOCK_TOOLS
@@ -165,22 +191,43 @@ def _mock_group(group_id: str, name: str, description: str, tool_refs: list[str]
         "resolvedToolRefs": resolved,
         "status": status,
         "enabled": True,
+        "author": "KRRI ASAP",
+        "version": "group",
+        "tags": [*metadata.pop("tags", []), status],  # Gateway 는 status 를 tag 로도 붙인다
+        "updatedAt": "2026-09-29T01:18:49.165Z",
+        **metadata,
     }
 
 
 MOCK_MARKET: list[dict] = [
     _mock_group("krri-map-location", "지도/위치 검색", "장소명 기반 좌표 검색과 지도 이동에 필요한 기본 위치 도구를 제공합니다.",
-                ["asap-mcp-core/geo.geocode"]),
+                ["asap-mcp-core/geo.geocode"],
+                longDescription="장소명, 역명, 시설명 등을 좌표와 bbox로 변환해 지도 이동과 다른 공간 분석 도구의 입력으로 연결하는 도구 그룹입니다.",
+                tags=["지도", "위치", "검색", "GIS"]),
     _mock_group("krri-railway-network", "철도망/노선 조회", "철도 노선, 역, 구간 geometry 조회 도구를 제공합니다.",
-                ["asap-mcp-core/geo.getRailwayLines"]),
+                ["asap-mcp-core/geo.getRailwayLines"], tags=["철도", "노선", "역", "GIS"]),
     _mock_group("krri-admin-boundary", "행정구역 경계 조회", "좌표가 속한 시도·시군구·읍면동을 찾고 행정구역 경계를 조회합니다.",
-                ["asap-mcp-core/adminBoundary.findBoundaryByPoint"]),
+                ["asap-mcp-core/adminBoundary.findBoundaryByPoint"], tags=["행정구역", "경계", "시군구", "GIS"]),
     _mock_group("krri-road-cctv", "도로/CCTV 조회", "지도 범위 내 도로 CCTV 조회 도구를 제공합니다.",
-                ["asap-mcp-core/road.getCctv"]),
+                ["asap-mcp-core/road.getCctv"], tags=["도로", "CCTV", "교통", "지도"]),
+    _mock_group("krri-ev-chargers", "전기차 충전소 조회",
+                "로컬 동기화된 전기차 충전소 위치, 충전기 유형, 운영 상태를 빠르게 조회합니다.",
+                ["asap-mcp-core/ev.searchStations"],
+                longDescription="한국환경공단 전기자동차 충전소 정보와 상태를 백그라운드에서 PostGIS로 동기화하고, "
+                                "충전소 단위 검색·지도 클러스터·충전기별 상세 상태와 데이터 최신성을 제공합니다.",
+                tags=["전기차", "충전소", "교통", "지도"],
+                layerDatasets=[{
+                    "id": "mcp_ev_chargers_current_view", "name": "전기차 충전소 현재 화면",
+                    "description": "현재 지도 화면과 줌에 맞춘 충전소 클러스터·사용 가능 상태",
+                    "geometryKind": "point", "toolRef": "asap-mcp-core/ev.searchstations",
+                    "input": {"limit": 2000, "cluster": True}, "defaultStyle": {"pointColor": "#64748b"},
+                }]),
     _mock_group("route-accessibility", "경로/접근성 분석", "OTP 경로 탐색과 R5 도달권/접근성 분석 도구를 하나의 실행 후보 그룹으로 제공합니다.",
-                ["otp-router/*", "r5-server/*"]),
+                ["otp-router/*", "r5-server/*"],
+                longDescription="교통 경로, 도달권, 접근성 분석에 필요한 OTP Router MCP와 R5 Server MCP 도구 묶음입니다.",
+                tags=["경로", "접근성", "도달권", "분석"]),
     _mock_group("web-research", "웹 리서치", "인터넷 검색과 공개 웹 페이지 본문 조회 도구를 제공합니다.",
-                ["web-search/*"], status="error"),
+                ["web-search/*"], status="error", tags=["검색", "웹", "출처"]),
 ]
 
 
@@ -295,11 +342,43 @@ def normalize_gateway_catalog(tools: list, market: list) -> list[dict]:
             "description": group.get("description") or "",
             "status": _status(group_tools, server_ids, servers_with_tools, group.get("status")),
             "enabled": group.get("enabled") is not False,
+            "long_description": _text(group.get("longDescription")),
+            "tags": _tags(group.get("tags")),
+            "author": _text(group.get("author")),
+            "updated_at": _text(group.get("updatedAt")) or None,
+            "connected_datasets": _datasets(group.get("layerDatasets")),
             "server_ids": server_ids,
             "tool_refs": [str(r).lower() for r in group.get("toolRefs") or [] if r],
             "tools": group_tools,
         })
     return mcps
+
+
+# Gateway toolGroups.ts 가 tags 에 더하는 group status 값. 주제 tag 가 아니다.
+STATUS_TAGS = frozenset({"ready", "disabled", "error", "unknown"})
+
+
+def _text(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _tags(value) -> list[str]:
+    tags = (_text(t) for t in value) if isinstance(value, list) else ()
+    return [t for t in dict.fromkeys(tags) if t and t not in STATUS_TAGS]
+
+
+def _datasets(value) -> list[dict]:
+    """layerDatasets → 사람이 읽을 칸만. 실행 설정(toolRef · input · style …)은 버린다."""
+    datasets = []
+    for item in value if isinstance(value, list) else ():
+        if not isinstance(item, dict) or not _text(item.get("name")):
+            continue
+        datasets.append({
+            "name": _text(item["name"]),
+            "description": _text(item.get("description")),
+            "geometry_kind": _text(item.get("geometryKind")) or None,
+        })
+    return datasets
 
 
 def _status(tools: list[dict], server_ids: list[str], servers_with_tools: set[str], group_status) -> str:

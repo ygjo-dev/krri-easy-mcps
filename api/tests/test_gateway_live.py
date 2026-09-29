@@ -51,7 +51,19 @@ MARKET = [
     {"id": "krri-road-cctv", "name": "도로/CCTV 조회", "description": "지도 범위 내 도로 CCTV 조회 도구를 제공합니다.",
      "serverIds": ["asap-mcp-core"], "toolRefs": ["asap-mcp-core/road.getcctv"],
      "resolvedToolRefs": ["asap-mcp-core/road.getcctv"], "status": "ready", "enabled": True, "category": "추천",
-     "headers": {"Authorization": "Bearer secret-token"}},
+     "headers": {"Authorization": "Bearer secret-token"},
+     # MCP 상세 metadata (실제 market 모양)
+     "longDescription": "선택 위치나 현재 지도 범위 주변의 ITS CCTV 정보를 조회합니다.",
+     "tags": ["도로", "CCTV", "도로", " ", 3, "ready"], "author": "KRRI ASAP", "version": "group",
+     "updatedAt": "2026-09-29T01:18:49.165Z", "rating": 5, "downloads": 0,
+     "features": ["road.getCctv: 현재 지도 bbox 안의 ITS 도로 CCTV 위치를 조회합니다."],
+     "layerDatasets": [
+         {"id": "mcp_cctv", "name": "CCTV 위치", "description": "현재 화면 CCTV", "geometryKind": "point",
+          "toolRef": "asap-mcp-core/road.getcctv", "input": {"limit": 500}, "defaultStyle": {"pointColor": "#ff0000"},
+          "geometryJoin": {"toolRef": "system/adminBoundary.searchBoundaries"}},
+         {"id": "no-name", "toolRef": "asap-mcp-core/road.getcctv"},
+         "not-a-dict",
+     ]},
     {"id": "krri-map-location", "name": "지도/위치 검색", "serverIds": ["asap-mcp-core"],
      "toolRefs": ["asap-mcp-core/geo.geocode"], "resolvedToolRefs": ["asap-mcp-core/geo.geocode"], "status": "ready"},
     # multi-server group. otp-router 는 이번 refresh 에 Tool 을 안 냈다.
@@ -246,3 +258,36 @@ def test_factory_modes():
         make_gateway_client("live", "")
     with pytest.raises(ValueError):
         make_gateway_client("nope")
+
+
+def test_normalize_keeps_only_readable_group_metadata():
+    cctv = by_id(normalize_gateway_catalog(TOOLS, MARKET))["krri-road-cctv"]
+    assert cctv["long_description"] == "선택 위치나 현재 지도 범위 주변의 ITS CCTV 정보를 조회합니다."
+    assert cctv["tags"] == ["도로", "CCTV"]  # 중복 · 빈 값 · 문자열 아닌 값 · status tag 제거
+    assert cctv["author"] == "KRRI ASAP"
+    assert cctv["updated_at"] == "2026-09-29T01:18:49.165Z"
+    assert cctv["connected_datasets"] == [{"name": "CCTV 위치", "description": "현재 화면 CCTV", "geometry_kind": "point"}]
+    # metadata 가 없는 group
+    web = by_id(normalize_gateway_catalog(TOOLS, MARKET))["web-research"]
+    assert (web["long_description"], web["tags"], web["author"], web["updated_at"], web["connected_datasets"]) == (
+        "", [], "", None, [])
+
+
+def test_detail_rich_metadata_hides_internal_values(client):
+    body = client.get("/api/mcps/krri-road-cctv").json()
+    assert body["tags"] == ["도로", "CCTV"]
+    assert body["connected_datasets"][0]["name"] == "CCTV 위치"
+    assert body["organization"] == "KRRI ASAP"
+    text = json.dumps(body, ensure_ascii=False)
+    for marker in ("toolRef", "system/", "adminBoundary", "defaultStyle", "#ff0000", "limit", "mcp_cctv",
+                   "rating", "downloads", "features", "version", "추천", "Bearer", "asap-mcp-core", "road.getcctv"):
+        assert marker not in text
+
+
+def test_organization_falls_back_to_gateway_author(gateway, clock):
+    market = [{"id": "other-group", "name": "Other", "serverIds": ["asap-mcp-core"], "toolRefs": ["asap-mcp-core/geo.geocode"],
+               "resolvedToolRefs": ["asap-mcp-core/geo.geocode"], "status": "ready", "author": "외부 기관"}]
+    app = create_app()
+    app.state.gateway = RealGatewayClient(BASE_URL, fetch_json=FakeGateway(TOOLS, market), clock=clock)
+    card = next(c for c in TestClient(app).get("/api/mcps").json() if c["mcp_id"] == "other-group")
+    assert card["organization"] == "외부 기관"

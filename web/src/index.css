@@ -174,7 +174,22 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
 .stats dd { margin: 4px 0 0; font-size: 16px; line-height: 1.5; min-height: 24px; display: flex; align-items: center; justify-content: center; overflow-wrap: anywhere; }
 .stats .status { justify-content: center; }
 
-.detail-summary { font-size: 15px; color: var(--text); white-space: pre-line; margin-bottom: 36px; }
+.detail-summary { font-size: 15px; color: var(--text); white-space: pre-line; margin-bottom: 14px; }
+/* Gateway tags · 연결 데이터 geometry. 넘치면 줄을 바꾼다. */
+.chip { display: inline-flex; align-items: center; max-width: 100%; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+/* tags · 개요가 없는 MCP(개발 중 등)는 요약 바로 뒤가 탭이다. 예전 간격을 유지한다. */
+.detail-summary + .tabs { margin-top: 22px; }
+.tag-list { list-style: none; margin: 0 0 24px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-section { margin: 0 0 28px; padding: 20px 24px; border-radius: var(--radius); background: var(--surface); }
+.detail-section h2 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.overview-text { font-size: 14px; line-height: 1.75; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.section-note { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.dataset-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.dataset-list li { padding: 12px 14px; border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.dataset-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.dataset-head strong { font-size: 14px; overflow-wrap: anywhere; }
+.dataset-list .chip { background: var(--surface); }
+.dataset-list p { margin-top: 4px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
 .tabs button {
@@ -319,4 +334,5 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
   .tool-body { padding: 0 16px 18px; }
   .tool-body dd, .info-box dd { margin-bottom: 10px; }
   .info-box { padding: 20px; }
+  .detail-section { padding: 18px 20px; }
 }

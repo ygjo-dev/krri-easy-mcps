@@ -3,6 +3,8 @@
 두 출처를 한 목록으로 합친다.
 - Gateway logical MCP (lifecycle "available"): Gateway market group + presentation.yaml 을 mcp_id 로 join.
   presentation 에 entry 가 없는 group 도 숨기지 않는다. Gateway 값으로 채우고 분류는 「기타」.
+  presentation 은 이름 · 요약 · 분류 · 제공만 덮는다. 상세의 long_description · tags · connected_datasets ·
+  updated_at 은 Gateway group 값만 쓴다 (EASY config 에 두지 않는다).
 - planned MCP (lifecycle "development"): planned_mcps.yaml. Gateway 에 없다. status · tool_count 가 null 이다
   (Tool 0개 · 사용 불가가 아니라 아직 없는 것). 같은 id 의 Gateway group 이 있으면 Gateway 쪽을 쓴다.
 
@@ -25,6 +27,8 @@ LIFECYCLE_DEVELOPMENT = "development"
 SOURCE_PLANNED = "planned"
 
 NOT_FOUND_DETAIL = "MCP 를 찾을 수 없습니다."
+# Gateway group 에서만 오는 상세 칸의 빈 값 (개발 중 MCP 용).
+EMPTY_GATEWAY_DETAIL = {"long_description": "", "tags": [], "connected_datasets": [], "updated_at": None}
 
 
 def card(mcp: dict, presentation: dict, source: str) -> dict:
@@ -35,7 +39,7 @@ def card(mcp: dict, presentation: dict, source: str) -> dict:
         "display_name": p.get("display_name") or mcp.get("name") or mcp["mcp_id"],
         "summary": p.get("summary") or mcp.get("description") or "",
         "category": p.get("category") or FALLBACK_CATEGORY,
-        "organization": p.get("organization") or "",
+        "organization": p.get("organization") or mcp.get("author") or "",
         "lifecycle": LIFECYCLE_AVAILABLE,
         "status": mcp.get("status") or "unknown",
         "tool_count": len(mcp.get("tools") or []),
@@ -131,8 +135,15 @@ def get_mcp(mcp_id: str, request: Request) -> dict:
         planned = find_planned(state, mcp_id)
         if planned is None:
             raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
-        return {**planned_card(planned), "tools": []}
+        # Gateway 에 없으므로 상세 정보도 없다. 가짜 값을 채우지 않는다.
+        return {**planned_card(planned), **EMPTY_GATEWAY_DETAIL, "tools": []}
     detail = card(mcp, state.presentation, state.gateway.source)
+    detail.update({
+        "long_description": mcp.get("long_description") or "",
+        "tags": list(mcp.get("tags") or []),
+        "connected_datasets": [dict(d) for d in mcp.get("connected_datasets") or []],
+        "updated_at": mcp.get("updated_at"),
+    })
     detail["tools"] = [
         {
             "name": t["name"],

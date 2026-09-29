@@ -30,7 +30,7 @@ def by_id(cards):
 def test_catalog_lists_logical_mcps_then_planned(client):
     cards = client.get("/api/mcps").json()
     assert [c["mcp_id"] for c in cards] == [
-        "krri-map-location", "krri-railway-network", "krri-admin-boundary", "krri-road-cctv",
+        "krri-map-location", "krri-railway-network", "krri-admin-boundary", "krri-road-cctv", "krri-ev-chargers",
         "web-research", "route-accessibility", *PLANNED,
     ]
     cctv = by_id(cards)["krri-road-cctv"]
@@ -217,3 +217,61 @@ def test_invalid_question_ownership_fails_startup(tmp_path, monkeypatch, yaml_te
     monkeypatch.setenv("KEM_CONFIG_DIR", str(tmp_path))
     with pytest.raises(ValueError, match=error):
         create_app()
+
+
+# ── 상세: Gateway group metadata ─────────────────────────────────────
+
+
+def test_detail_carries_gateway_group_metadata(client):
+    ev = client.get("/api/mcps/krri-ev-chargers").json()
+    assert ev["long_description"].startswith("한국환경공단 전기자동차 충전소 정보")
+    # Gateway 가 tags 에 붙이는 status 값(ready)은 빠진다
+    assert ev["tags"] == ["전기차", "충전소", "교통", "지도"]
+    assert ev["connected_datasets"] == [{
+        "name": "전기차 충전소 현재 화면",
+        "description": "현재 지도 화면과 줌에 맞춘 충전소 클러스터·사용 가능 상태",
+        "geometry_kind": "point",
+    }]
+    assert ev["updated_at"] == "2026-09-29T01:18:49.165Z"
+    # Tool 은 /api/tools 에서
+    assert [t["name"] for t in ev["tools"]] == ["ev.searchStations"]
+
+
+def test_detail_without_optional_metadata(client):
+    web = client.get("/api/mcps/web-research").json()
+    assert web["long_description"] == ""
+    assert web["connected_datasets"] == []
+    assert web["tags"] == ["검색", "웹", "출처"]  # status "error" tag 빠짐
+
+
+def test_presentation_override_with_gateway_rich_metadata(client):
+    route = client.get("/api/mcps/route-accessibility").json()
+    # 이름 · 요약 · 제공은 EASY override
+    assert route["display_name"] == "R5 기반 등시선도 MCP"
+    assert route["organization"] == "R5 / OTP"
+    assert route["summary"].startswith("출발지에서 정한 시간 안에")
+    # 상세 본문 · tags 는 Gateway
+    assert route["long_description"].startswith("교통 경로, 도달권, 접근성 분석에 필요한")
+    assert route["tags"] == ["경로", "접근성", "도달권", "분석"]
+
+
+def test_planned_detail_has_no_fake_gateway_metadata(client):
+    for mcp_id in PLANNED:
+        d = client.get(f"/api/mcps/{mcp_id}").json()
+        assert (d["long_description"], d["tags"], d["connected_datasets"], d["updated_at"], d["tools"]) == (
+            "", [], [], None, [])
+        assert d["status"] is None and d["tool_count"] is None
+
+
+def test_card_keeps_its_shape(client):
+    # 상세 칸은 목록 카드에 싣지 않는다
+    for c in client.get("/api/mcps").json():
+        assert set(c) == {"mcp_id", "display_name", "summary", "category", "organization", "lifecycle", "status",
+                          "tool_count", "source"}
+
+
+def test_detail_has_no_dataset_execution_config(client):
+    text = json.dumps(client.get("/api/mcps/krri-ev-chargers").json(), ensure_ascii=False)
+    for marker in ("toolRef", "tool_ref", "ev.searchstations", "defaultStyle", "pointColor", "input", "mcp_ev_chargers",
+                   "version", "rating", "downloads", "features", "contact", "추천"):
+        assert marker not in text

@@ -100,6 +100,31 @@ BFF 는 두 GET 의 결과를 `KEM_GATEWAY_CACHE_SECONDS`(기본 60) 동안 한 
 쓰지 않는 것: `/api/admin/mcp-servers[/:id]` (Keycloak ADMIN JWT 필요, 응답에 server `url` · `headers` 포함),
 admin POST/PUT/DELETE, `/refresh`, `/test`. Portal BFF 에 ADMIN credential 을 두지 않는다.
 
+### MCP 상세 metadata 의 source
+
+MCP 자체 정보는 Gateway group(`/api/mcp-market`), Tool 정보는 `/api/tools` 다. EASY config 에는 표시 override 만 둔다.
+KRRI_ASAP 「KRRI MCPs」 상세(`ASAP-web .../features/mcp/components/McpDetail.tsx`)와 같은 market item 을 읽는다.
+
+| 칸 | source | Portal 상세 |
+|---|---|---|
+| display_name · summary | presentation.yaml override → 없으면 Gateway `name` · `description` | 머리 |
+| organization | presentation.yaml → 없으면 Gateway `author` | 머리 · MCP 정보 |
+| `long_description` | Gateway `longDescription` 만 | 「개요」. 요약과 같거나 없으면 숨김 |
+| `tags` | Gateway `tags` 만. Gateway 가 붙이는 status 값(ready · error …)은 뺀다 | 요약 아래 chip |
+| `connected_datasets` | Gateway `layerDatasets` 의 `name` · `description` · `geometryKind` 만 | 「연결 데이터」 (있을 때만). 지도 적용 · Data Library 동작은 없다 |
+| `updated_at` | Gateway `updatedAt` = group server 의 마지막 상태 확인 시각 | MCP 정보 「상태 확인」 |
+| Tool name · description · parameter | `/api/tools` | Tool 목록 |
+
+쓰지 않는 것:
+- `features`: 지금 모든 항목이 `"<tool>: 설명"` 이라 Tool 목록과 겹친다. MCP 수준 기능 설명이 생기면 다시 본다.
+- `version`: 늘 `"group"`. `rating` · `downloads`: 고정값. `category`: ASAP-web market tab.
+- `lastError`: 내부 주소가 들어 있다. layerDatasets 의 `toolRef` · `input` · `defaultStyle` 등: Data Library 실행 설정.
+- `contact`: Gateway 는 group `contact` 칸을 지원하지만 지금 어느 group 에도 없다. KRRI MCPs 에 보이는 담당자는
+  ASAP-web `fetchMcpMarket()` 이 asap-mcp-core group 에 붙이는 frontend 하드코딩이다. Portal 에 복사하지 않는다.
+  두 화면에 같이 보이려면 `tool-groups.json` group `contact` 로 옮겨야 한다 (KRRI_ASAP 결정 필요).
+
+개발 중 MCP 상세는 이 칸들이 비어 있다 (`""` · `[]` · `null`). 가짜 값을 채우지 않는다.
+
 ### status
 
 | 값 | 근거 |

@@ -96,7 +96,7 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 |---|---|---|
 | GET | `/api/health` | 상태와 client mode |
 | GET | `/api/mcps` | catalog 카드 `{mcp_id, display_name, summary, category, organization, lifecycle, status, tool_count, source}`. 개발 중은 `lifecycle: "development"`, `status` · `tool_count` 가 null |
-| GET | `/api/mcps/{mcp_id}` | 상세 + Tool/parameter |
+| GET | `/api/mcps/{mcp_id}` | 상세: 카드 + Gateway group 의 `long_description` · `tags` · `connected_datasets[{name, description, geometry_kind}]` · `updated_at`(상태 확인 시각) + Tool/parameter. 개발 중은 빈 값 |
 | GET | `/api/mcps/{mcp_id}/demo-questions` | 고정 질문 `{question_id, display_text}` 만 |
 | POST | `/api/demo/questions/{question_id}/execute` | 고정 질문 실행 → trace(단계마다 `mcp_name`) + 최종 답변 |
 | GET | `/api/toolbox` | 내 도구함 `{mcp_ids, mcps: [catalog 카드]}` |

@@ -35,7 +35,22 @@ export interface Tool {
   parameters: ToolParameter[]
 }
 
+// MCP 가 KRRI-ASAP Data Library 에 제공하는 연결 데이터 (Gateway group layerDatasets 의 읽을 칸만)
+export interface ConnectedDataset {
+  name: string
+  description: string
+  // point | line | polygon | mixed | auto. 모르면 null
+  geometry_kind: string | null
+}
+
+// long_description · tags · connected_datasets · updated_at 은 Gateway group 값이다 (개발 중이면 비어 있다).
+// tools 는 Gateway /api/tools 값이다.
 export interface McpDetail extends McpCard {
+  long_description: string
+  tags: string[]
+  connected_datasets: ConnectedDataset[]
+  // group server 들의 마지막 상태 확인 시각 (ISO). metadata 편집 시각이 아니다
+  updated_at: string | null
   tools: Tool[]
 }
 
