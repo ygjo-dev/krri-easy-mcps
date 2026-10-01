@@ -22,23 +22,33 @@ isApplied 와 같다: groupIds 가 있으면 그 목록, 없으면(legacy toolRe
 group 의 정의 refs 를 모두 덮는 group. PUT 이 groupIds 만 실으므로 group 으로 안 펼쳐지는 explicit
 toolRefs(예: 이전 Portal 이 넣은 ``<serverId>/*``)는 첫 쓰기 때 위 판정으로 groupIds 가 되고 사라진다.
 
-Portal 은 Gateway guest UUID 를 자기 cookie(GUEST_COOKIE) 에 담아 두고, Gateway 를 부를 때만
-``asap_mcp_guest`` cookie 로 바꿔 보낸다. 이 값은 JSON · 로그에 싣지 않는다.
+Portal 은 브라우저의 ``asap_mcp_guest`` cookie 를 ASAP-web 과 같은 이름 · Path=/ 로 그대로 쓰고
+(routes/toolbox.py), Gateway 를 부를 때 ``Cookie: asap_mcp_guest=<uuid>`` 로 옮겨 싣는다. 이 값은 JSON · 로그에 싣지 않는다.
+
+GET /api/me/mcp-selections/events    (권한 ANYONE, text/event-stream)
+    같은 주인의 selection 이 PUT 으로 저장될 때마다 ``event: selection_changed`` 를 보낸다. 25초마다 ``: ping``.
+    신호만 온다 — selection 은 GET 으로 다시 읽는다. Portal 은 이 흐름을 브라우저로 그대로 넘길 뿐이다.
 """
 
+import asyncio
 import json
 import re
 import urllib.error
 import urllib.request
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
+
+import httpx
 
 from .gateway import SOURCE_LIVE, SOURCE_MOCK, GatewayUnavailable
 
 GATEWAY_GUEST_COOKIE = "asap_mcp_guest"
 SELECTIONS_PATH = "/api/me/mcp-selections"
+EVENTS_PATH = "/api/me/mcp-selections/events"
+# Gateway 는 25초마다 heartbeat 를 보낸다. 이만큼 아무것도 안 오면 끊긴 것으로 보고 흐름을 끝낸다(브라우저가 다시 잇는다).
+EVENTS_READ_TIMEOUT_SECONDS = 60.0
 
 # Gateway guestSession.ts 의 GUEST_ID_PATTERN 과 같다.
 GUEST_ID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
@@ -52,6 +62,16 @@ def valid_guest_id(value: str | None) -> str | None:
 class Selection:
     group_ids: tuple[str, ...]
     tool_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SelectionEvents:
+    """열린 selection 신호 흐름 하나. chunks 를 다 읽거나 aclose() 로 닫는다."""
+
+    chunks: AsyncIterator[bytes]
+    aclose: Callable[[], Awaitable[None]]
+    # Gateway 가 새로 발급한 guest id. 새로 안 줬으면 None.
+    issued_guest_id: str | None
 
 
 @dataclass(frozen=True)
@@ -100,10 +120,51 @@ class RealSelectionClient:
 
     source = SOURCE_LIVE
 
-    def __init__(self, base_url: str, *, timeout_seconds: float = 15, transport: Transport | None = None):
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        timeout_seconds: float = 15,
+        transport: Transport | None = None,
+        stream_transport: httpx.AsyncBaseTransport | None = None,
+    ):
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout_seconds
         self._transport = transport or self._urllib_transport
+        self._stream_transport = stream_transport
+
+    async def open_events(self, guest_id: str | None) -> SelectionEvents:
+        """Gateway selection 신호 흐름을 연다. 바이트를 해석하지 않고 그대로 넘긴다. 못 열면 GatewayUnavailable."""
+        headers = {"Accept": "text/event-stream"}
+        if valid_guest_id(guest_id):
+            headers["Cookie"] = f"{GATEWAY_GUEST_COOKIE}={guest_id}"
+        client = httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=httpx.Timeout(self._timeout, read=EVENTS_READ_TIMEOUT_SECONDS),
+            transport=self._stream_transport,
+        )
+        try:
+            response = await client.send(client.build_request("GET", EVENTS_PATH, headers=headers), stream=True)
+        except httpx.HTTPError as exc:
+            await client.aclose()
+            raise GatewayUnavailable(f"GET {EVENTS_PATH} failed: {type(exc).__name__}") from None
+        if response.status_code != 200:
+            await response.aclose()
+            await client.aclose()
+            raise GatewayUnavailable(f"GET {EVENTS_PATH} failed: HTTP {response.status_code}")
+
+        async def chunks() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in response.aiter_raw():
+                    yield chunk
+            except httpx.HTTPError:
+                return  # heartbeat 가 끊겼거나 Gateway 가 닫았다. 흐름을 끝낸다.
+
+        async def aclose() -> None:
+            await response.aclose()
+            await client.aclose()
+
+        return SelectionEvents(chunks(), aclose, _issued_guest_id(response.headers.get_list("set-cookie")))
 
     def get(self, guest_id: str | None) -> SelectionReply:
         return self._call("GET", None, guest_id)
@@ -169,6 +230,21 @@ class MockSelectionClient:
         guest, issued = self._guest(guest_id)
         self.store[guest] = Selection(tuple(dict.fromkeys(group_ids)), ())
         return SelectionReply(self.store[guest], issued)
+
+    async def open_events(self, guest_id: str | None) -> SelectionEvents:
+        """mock 은 다른 화면이 없으므로 신호를 보내지 않는다. 연결만 붙잡아 둔다(heartbeat)."""
+        _, issued = self._guest(guest_id)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            yield b": connected\n\n"
+            while True:
+                await asyncio.sleep(25)
+                yield b": ping\n\n"
+
+        async def aclose() -> None:
+            return None
+
+        return SelectionEvents(chunks(), aclose, issued)
 
     def _guest(self, guest_id):
         if valid_guest_id(guest_id):

@@ -197,9 +197,24 @@ PUT 은 ASAP-web 처럼 `groupIds` 만 싣는다. 그래서 group 으로 안 펼
 ### 사용자 식별
 
 로그인 사용자는 Gateway 가 JWT `sub` 로, 그 밖은 guest cookie `asap_mcp_guest` (UUID v4, HttpOnly, SameSite=Lax, Path=/, 1년) 로 찾는다.
-Portal BFF 는 Gateway guest id 를 자기 cookie `kem_gateway_guest` (HttpOnly, SameSite=Lax, Path=/api, 1년) 에 담고,
-Gateway 를 부를 때만 `Cookie: asap_mcp_guest=<id>` 로 보낸다. 처음 온 브라우저는 Gateway 가 발급한 Set-Cookie 에서 id 를 읽어 담는다.
+Portal BFF 도 같은 cookie `asap_mcp_guest` (HttpOnly, SameSite=Lax, Path=/, 1년, https 면 Secure) 를 쓰고,
+Gateway 를 부를 때 `Cookie: asap_mcp_guest=<id>` 로 옮겨 싣는다. 처음 온 브라우저는 Gateway 가 발급한 Set-Cookie 에서 id 를 읽어
+같은 이름으로 담는다. cookie 는 port 를 가리지 않으므로 **같은 hostname** 의 ASAP-web 과 Portal 은 같은 guest · 같은 selection 이다
+(localhost · 127.0.0.1 · LAN IP 는 서로 다른 host 다). 다른 subdomain · domain 배치에서는 공유되지 않는다.
+
+예전 Portal cookie `kem_gateway_guest` (Path=/api) 는 이행용으로만 읽는다. 유효한 `asap_mcp_guest` 가 없을 때만 그 UUID 를 그대로
+`asap_mcp_guest` 로 올리고(같은 Gateway 행), 응답에서 legacy cookie 를 지운다. 둘 다 있으면 `asap_mcp_guest` 가 이긴다.
+형식(UUID v4)이 틀린 값은 어느 쪽이든 믿지 않는다.
 id 값은 JSON · 로그에 싣지 않는다. Authorization 은 보내지 않는다 (로그인 연동은 아직 없음).
+
+### 다른 화면의 변경 신호
+
+Gateway 는 같은 주인(guest cookie 또는 JWT sub)의 selection 이 PUT 으로 저장될 때마다
+`GET /api/me/mcp-selections/events` (text/event-stream) 로 `event: selection_changed` 를 보낸다 (25초마다 `: ping`).
+신호에는 selection 이 없다. Portal BFF 는 `GET /api/toolbox/events` 에서 이 흐름을 guest cookie 로 열어 바이트 그대로
+브라우저로 넘기고, 브라우저는 신호를 받으면 `GET /api/toolbox` 로 다시 읽는다. 브라우저가 Gateway 를 직접 부르지 않는다.
+끊기면 브라우저가 1s → 2s → 5s(상한)로 다시 잇고, 다시 이어지면 한 번 다시 읽는다. 반복 조회(polling)는 없다.
+Gateway 한 process 안의 메모리 구독이라 Gateway 를 여러 개 띄우면 공유 broker 가 필요하다.
 
 ### 실패
 
@@ -215,7 +230,7 @@ Gateway `POST /api/tools/execute` 는 명시 `user_context` 가 없으면 요청
 **지금 8000 번의 agentic_ai 는 이 header 를 읽지 않는다.** agentic 은 KRRI `POST /workflow/execute` 를 부를 때
 고정 `USER_CONTEXT` 로 `X-User-ID` · `X-User-MCP-Tools` 를 붙인다 (asap-mcp-core · r5-server · otp-router, web-search 없음).
 그래서 도구함 selection 은 KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 실행 범위는 바꾸지 않는다.
-또 Portal 의 guest(`kem_gateway_guest`) 와 ASAP-web 의 guest cookie 는 서로 다른 사용자다.
+guest cookie 는 ASAP-web 과 같다 (위 「사용자 식별」).
 
 ## Future backlog: 신규 MCP server onboarding
 

@@ -20,7 +20,7 @@ from app.clients.selection import (
     registered_mcp_ids,
 )
 from app.main import GATEWAY_UNAVAILABLE_DETAIL, create_app
-from app.routes.toolbox import GUEST_COOKIE, IN_DEVELOPMENT_DETAIL, NOT_APPLIED_DETAIL
+from app.routes.toolbox import GUEST_COOKIE, IN_DEVELOPMENT_DETAIL, LEGACY_GUEST_COOKIE, NOT_APPLIED_DETAIL
 
 BASE_URL = "http://gateway.internal.example:3000"
 
@@ -115,14 +115,124 @@ def seeded_client(app, gw, group_ids, tool_refs):
     return c
 
 
-def test_get_empty_toolbox_issues_portal_cookie(client, gw):
+def test_get_empty_toolbox_issues_canonical_gateway_cookie(client, gw):
     r = client.get("/api/toolbox")
     assert r.status_code == 200
     assert r.json() == {"mcp_ids": [], "mcps": []}
-    header = r.headers["set-cookie"]
-    assert header.startswith(f"{GUEST_COOKIE}=")
-    assert "HttpOnly" in header and "Path=/api" in header and "samesite=lax" in header.lower()
-    assert GATEWAY_GUEST_COOKIE not in header
+    [header] = r.headers.get_list("set-cookie")
+    # ASAP-web 이 Gateway 에서 받는 것과 같은 cookie: 이름 · Path=/ · HttpOnly · SameSite=Lax · 1년
+    assert GUEST_COOKIE == GATEWAY_GUEST_COOKIE == "asap_mcp_guest"
+    issued = gw.calls[0]
+    assert issued == ("GET", None)
+    guest = client.cookies.get(GUEST_COOKIE)
+    assert header.startswith(f"asap_mcp_guest={guest};")
+    assert "; Path=/;" in header + ";" and "Path=/api" not in header
+    assert "HttpOnly" in header and "samesite=lax" in header.lower() and "Max-Age=31536000" in header
+    assert "Secure" not in header
+
+
+def test_canonical_cookie_is_secure_over_https(app, gw):
+    r = TestClient(app, base_url="https://testserver").get("/api/toolbox")
+    assert "Secure" in r.headers["set-cookie"]
+
+
+def _cookie_headers(r, name):
+    return [h for h in r.headers.get_list("set-cookie") if h.startswith(f"{name}=")]
+
+
+def test_existing_canonical_cookie_is_used_as_is(app, gw):
+    """ASAP-web 이 이미 받아 둔 guest 를 그대로 Gateway 에 싣는다. 새 guest · 새 cookie 없음."""
+    guest = gw.seed(["krri-road-cctv"], [])
+    c = TestClient(app)
+    c.cookies.set("asap_mcp_guest", guest)
+    r = c.get("/api/toolbox")
+    assert r.json()["mcp_ids"] == ["krri-road-cctv"]
+    assert gw.calls == [("GET", guest)]
+    assert r.headers.get_list("set-cookie") == []
+
+
+def test_legacy_portal_cookie_is_promoted_with_same_uuid(app, gw):
+    """예전 Portal 사용자: 같은 UUID(= 같은 Gateway 행)를 canonical 로 올리고 legacy(Path=/api) 를 지운다."""
+    guest = gw.seed(["krri-map-location"], [])
+    c = TestClient(app)
+    c.cookies.set(LEGACY_GUEST_COOKIE, guest)
+    r = c.get("/api/toolbox")
+    assert r.json()["mcp_ids"] == ["krri-map-location"]
+    assert gw.calls == [("GET", guest)]
+    [canonical] = _cookie_headers(r, "asap_mcp_guest")
+    assert canonical.startswith(f"asap_mcp_guest={guest};") and "Path=/;" in canonical + ";" and "HttpOnly" in canonical
+    [dropped] = _cookie_headers(r, LEGACY_GUEST_COOKIE)
+    assert "Path=/api" in dropped and ("Max-Age=0" in dropped or "expires=" in dropped.lower())
+    # 다음 요청부터는 canonical 만으로 같은 selection
+    c2 = TestClient(app)
+    c2.cookies.set("asap_mcp_guest", guest)
+    assert c2.post("/api/toolbox/krri-road-cctv").json()["mcp_ids"] == ["krri-map-location", "krri-road-cctv"]
+    assert gw.calls[-1] == ("PUT", guest)
+
+
+def test_canonical_wins_over_legacy(app, gw):
+    canonical = gw.seed(["krri-road-cctv"], [])
+    legacy = gw.seed(["web-research"], [])
+    c = TestClient(app)
+    c.cookies.set("asap_mcp_guest", canonical)
+    c.cookies.set(LEGACY_GUEST_COOKIE, legacy)
+    r = c.get("/api/toolbox")
+    assert r.json()["mcp_ids"] == ["krri-road-cctv"]
+    assert gw.calls == [("GET", canonical)]
+    assert _cookie_headers(r, "asap_mcp_guest") == []
+    [dropped] = _cookie_headers(r, LEGACY_GUEST_COOKIE)
+    assert "Path=/api" in dropped
+
+
+@pytest.mark.parametrize("bad", ["not-a-uuid", "00000000-0000-1000-8000-000000000000", "guest:x; asap_mcp_guest=evil"])
+def test_invalid_canonical_is_not_authoritative(app, gw, bad):
+    c = TestClient(app)
+    c.cookies.set("asap_mcp_guest", bad)
+    r = c.get("/api/toolbox")
+    assert gw.calls == [("GET", None)]
+    [issued] = _cookie_headers(r, "asap_mcp_guest")
+    assert bad not in issued
+
+
+def test_invalid_canonical_falls_back_to_valid_legacy(app, gw):
+    legacy = gw.seed(["krri-road-cctv"], [])
+    c = TestClient(app)
+    c.cookies.set("asap_mcp_guest", "not-a-uuid")
+    c.cookies.set(LEGACY_GUEST_COOKIE, legacy)
+    r = c.get("/api/toolbox")
+    assert gw.calls == [("GET", legacy)]
+    assert _cookie_headers(r, "asap_mcp_guest")[0].startswith(f"asap_mcp_guest={legacy};")
+
+
+def test_invalid_legacy_is_not_promoted(app, gw):
+    c = TestClient(app)
+    c.cookies.set(LEGACY_GUEST_COOKIE, "nope")
+    r = c.get("/api/toolbox")
+    assert gw.calls == [("GET", None)]
+    [issued] = _cookie_headers(r, "asap_mcp_guest")
+    assert "nope" not in issued
+    assert _cookie_headers(r, LEGACY_GUEST_COOKIE)  # 쓸모없는 legacy 도 지운다
+
+
+def test_migration_responses_never_carry_the_uuid_in_json(app, gw):
+    guest = gw.seed(["route-accessibility"], [])
+    c = TestClient(app)
+    c.cookies.set(LEGACY_GUEST_COOKIE, guest)
+    bodies = [c.get("/api/toolbox").text, c.post("/api/toolbox/krri-road-cctv").text,
+              c.delete("/api/toolbox/route-accessibility").text]
+    for text in bodies:
+        assert guest not in text and "asap_mcp_guest" not in text and LEGACY_GUEST_COOKIE not in text
+
+
+def test_failed_gateway_call_keeps_legacy_cookie(app, gw):
+    """이행은 성공 응답에서만 일어난다. Gateway 가 실패하면 cookie 를 건드리지 않는다."""
+    guest = gw.seed([], [])
+    gw.fail = GatewayUnavailable("down")
+    c = TestClient(app)
+    c.cookies.set(LEGACY_GUEST_COOKIE, guest)
+    r = c.get("/api/toolbox")
+    assert r.status_code == 502
+    assert r.headers.get_list("set-cookie") == []
 
 
 def test_add_get_remove_writes_group_id(client, gw):

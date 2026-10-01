@@ -102,9 +102,10 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 | GET | `/api/toolbox` | 내 도구함 `{mcp_ids, mcps: [catalog 카드]}` |
 | POST | `/api/toolbox/{mcp_id}` | 도구함에 등록 (이미 있으면 그대로) → 도구함. 개발 중은 409 |
 | DELETE | `/api/toolbox/{mcp_id}` | 도구함에서 해제 (없으면 그대로) → 도구함. 개발 중은 409 |
+| GET | `/api/toolbox/events` | 도구함이 다른 화면(KRRI-ASAP 등)에서 바뀌면 오는 신호 (text/event-stream, `selection_changed`). 받으면 `GET /api/toolbox` 로 다시 읽는다 |
 
 도구함은 Gateway `GET/PUT /api/me/mcp-selections` 를 쓴다. ASAP-web MCP market 과 같게 `{groupIds}` 만 PUT 하므로
-Gateway selection 에는 등록한 `mcp_id` 가 groupId 로 들어간다. 사용자는 HttpOnly cookie `kem_gateway_guest` (Gateway guest id) 로 구분한다.
+Gateway selection 에는 등록한 `mcp_id` 가 groupId 로 들어간다. 사용자는 Gateway 의 guest cookie `asap_mcp_guest` (HttpOnly, Path=/) 로 구분한다. ASAP-web 과 같은 cookie 라 같은 hostname 이면 두 화면이 같은 selection 을 쓴다.
 
 ## 책임 경계
 

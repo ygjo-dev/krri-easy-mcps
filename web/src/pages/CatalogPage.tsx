@@ -37,8 +37,8 @@ export default function CatalogPage() {
   return (
     <>
       <section className="hero">
-        <h1>KRRI MCP 로 만드는<br />새로운 AI 경험</h1>
-        <p>AI 가 사용할 수 있는 KRRI 의 MCP 를 찾아보고, 필요한 MCP 를 도구함에 담아 보세요.</p>
+        <h1>KRRI EASY MCPs<br /></h1>
+        <p>KRRI ASAP과 연계된 다양한 MCP를 탐색하고, 필요한 도구를 구성하여 AI 서비스에 활용하세요.</p>
       </section>
 
       <div className="toolbar">
