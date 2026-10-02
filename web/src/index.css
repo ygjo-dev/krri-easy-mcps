@@ -53,9 +53,32 @@ button:disabled { cursor: default; }
 .header-row { display: flex; align-items: center; gap: 48px; height: var(--header-h); }
 .brand { font-weight: 800; font-size: 17px; letter-spacing: -0.01em; white-space: nowrap; }
 .site-header nav { display: flex; gap: 36px; }
-.site-header nav a { font-size: 15px; font-weight: 600; color: var(--text-2); padding: 6px 0; border-bottom: 2px solid transparent; }
+.site-header nav a { font-size: 15px; font-weight: 600; color: var(--text-2); padding: 6px 0; border-bottom: 2px solid transparent; white-space: nowrap; }
 .site-header nav a:hover { color: var(--text); }
 .site-header nav a.active { color: var(--text); border-bottom-color: var(--text); }
+
+/* EASY 자체 계정 (헤더 오른쪽). KRRI_ASAP 로그인과 별개다. */
+.account { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 32px; }
+.account-name { font-size: 14px; font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-badge { flex: none; padding: 2px 8px; border-radius: 999px; background: rgba(74, 158, 255, 0.14); color: var(--accent); font-size: 11px; font-weight: 700; }
+.pill-sm { min-height: 32px; padding: 0 14px; font-size: 13px; }
+
+.login-dialog {
+  width: min(360px, calc(100vw - 32px)); padding: 0; border: 0; border-radius: 20px;
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+.login-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.login-form { display: grid; gap: 14px; padding: 28px 24px 24px; }
+.login-form h2 { font-size: 20px; font-weight: 800; }
+.login-note { margin-top: -8px; color: var(--muted); font-size: 13px; }
+.field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.field input {
+  width: 100%; min-width: 0; height: 42px; padding: 0 14px; border-radius: 10px; border: 1px solid #3a3d42;
+  background: var(--bg); color: var(--text); font-size: 14px; font-weight: 400; outline: none;
+}
+.field input:focus { border-color: var(--text-2); }
+.login-error { color: var(--danger); font-size: 13px; }
+.login-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
 main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-bottom: 72px; }
 .site-footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
@@ -307,6 +330,8 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
   .brand { font-size: 15px; }
   .site-header nav { gap: 20px; }
   .site-header nav a { font-size: 14px; }
+  .account { gap: 8px; }
+  .account-name { max-width: 72px; font-size: 13px; }
   .hero { padding: 44px 0 36px; }
   .hero h1 { font-size: 28px; }
   .hero p { font-size: 14px; }
@@ -335,4 +360,16 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
   .tool-body dd, .info-box dd { margin-bottom: 10px; }
   .info-box { padding: 20px; }
   .detail-section { padding: 18px 20px; }
+}
+
+/* 계정 칸이 들어갈 자리가 없으면 머리를 두 줄로: 브랜드 · 계정 / 메뉴 */
+@media (max-width: 540px) {
+  :root { --header-h: 92px; }
+  .header-row { flex-wrap: wrap; height: auto; column-gap: 16px; row-gap: 2px; padding-top: 8px; padding-bottom: 4px; }
+  .account { min-height: 44px; }
+  .site-header nav { order: 1; width: 100%; }
+}
+
+@media (max-width: 360px) {
+  .account-name { display: none; }
 }

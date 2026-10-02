@@ -87,3 +87,16 @@ export interface Toolbox {
   mcp_ids: string[]
   mcps: McpCard[]
 }
+
+// EASY 자체 계정 (KRRI_ASAP 로그인과 별개). BFF 는 이름과 역할만 준다.
+export type Role = 'USER' | 'ADMIN'
+
+export interface AuthUser {
+  username: string
+  role: Role
+}
+
+// GET /api/auth/me · POST /api/auth/login · POST /api/auth/logout 의 응답. 로그인 안 했으면 user 가 null
+export interface AuthState {
+  user: AuthUser | null
+}

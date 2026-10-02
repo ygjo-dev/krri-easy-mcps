@@ -10,7 +10,7 @@ export interface ToolboxState {
   errors: Record<string, string>
   add: (mcpId: string) => Promise<void>
   remove: (mcpId: string) => Promise<void>
-  reload: () => void
+  reload: () => Promise<void>
 }
 
 export const ToolboxContext = createContext<ToolboxState | null>(null)

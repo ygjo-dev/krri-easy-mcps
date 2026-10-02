@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import AccountControls from './auth/AccountControls'
+import AuthProvider from './auth/AuthProvider'
 import CatalogPage from './pages/CatalogPage'
 import McpDetailPage from './pages/McpDetailPage'
 import ToolboxPage from './pages/ToolboxPage'
@@ -18,35 +20,38 @@ function ScrollToTop() {
 export default function App() {
   return (
     <ToolboxProvider>
-      <ScrollToTop />
-      <header className="site-header">
-        <div className="container header-row">
-          <Link to="/" className="brand">KRRI EASY MCPs</Link>
-          <nav aria-label="주 메뉴">
-            <NavLink to="/" end>MCP 탐색</NavLink>
-            <NavLink to="/toolbox">도구함</NavLink>
-          </nav>
-        </div>
-      </header>
-      <main className="container">
-        <Routes>
-          <Route path="/" element={<CatalogPage />} />
-          <Route path="/mcps/:mcpId" element={<McpDetailPage />} />
-          <Route path="/toolbox" element={<ToolboxPage />} />
-          <Route
-            path="*"
-            element={
-              <div className="state-block">
-                <p>페이지를 찾을 수 없습니다.</p>
-                <Link to="/" className="pill pill-primary">MCP 탐색</Link>
-              </div>
-            }
-          />
-        </Routes>
-      </main>
-      <footer className="site-footer">
-        <div className="container">KRRI EASY MCPs</div>
-      </footer>
+      <AuthProvider>
+        <ScrollToTop />
+        <header className="site-header">
+          <div className="container header-row">
+            <Link to="/" className="brand">KRRI EASY MCPs</Link>
+            <nav aria-label="주 메뉴">
+              <NavLink to="/" end>MCP 탐색</NavLink>
+              <NavLink to="/toolbox">도구함</NavLink>
+            </nav>
+            <AccountControls />
+          </div>
+        </header>
+        <main className="container">
+          <Routes>
+            <Route path="/" element={<CatalogPage />} />
+            <Route path="/mcps/:mcpId" element={<McpDetailPage />} />
+            <Route path="/toolbox" element={<ToolboxPage />} />
+            <Route
+              path="*"
+              element={
+                <div className="state-block">
+                  <p>페이지를 찾을 수 없습니다.</p>
+                  <Link to="/" className="pill pill-primary">MCP 탐색</Link>
+                </div>
+              }
+            />
+          </Routes>
+        </main>
+        <footer className="site-footer">
+          <div className="container">KRRI EASY MCPs</div>
+        </footer>
+      </AuthProvider>
     </ToolboxProvider>
   )
 }

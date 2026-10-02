@@ -5,11 +5,12 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from .accounts import AccountStore
 from .clients.agentic_ai import AgenticAiUnavailable, make_agentic_ai_client
 from .clients.gateway import GatewayUnavailable, make_gateway_client
 from .clients.selection import make_selection_client
 from .metadata import load_demo_questions, load_planned_mcps, load_presentation
-from .routes import catalog, demo, toolbox
+from .routes import auth, catalog, demo, toolbox
 from .settings import Settings, load_settings
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.gateway_mode, settings.gateway_base_url, settings.gateway_cache_seconds
     )
     app.state.selection = make_selection_client(settings.gateway_mode, settings.gateway_base_url)
+    # EASY 자체 계정 · 세션 · 계정 도구함. KRRI_ASAP 로그인과 별개다.
+    app.state.accounts = AccountStore(
+        settings.db_path,
+        session_seconds=settings.session_hours * 3600,
+        admin_username=settings.admin_username,
+        admin_password=settings.admin_password,
+    )
 
     @app.exception_handler(GatewayUnavailable)
     async def gateway_unavailable(request: Request, exc: GatewayUnavailable) -> JSONResponse:
@@ -51,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "agentic_ai": app.state.agentic_ai.source,
         }
 
+    app.include_router(auth.router)
     app.include_router(catalog.router)
     app.include_router(demo.router)
     app.include_router(toolbox.router)

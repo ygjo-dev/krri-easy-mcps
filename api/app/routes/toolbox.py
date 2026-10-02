@@ -11,11 +11,24 @@ cookie 는 port 를 가리지 않으므로 같은 hostname 에 뜬 ASAP-web 이 
 
 예전 Portal cookie(LEGACY_GUEST_COOKIE, Path=/api) 는 이행용으로만 읽는다. 유효한 canonical 이 없을 때만 그 UUID 를
 그대로 canonical 로 올려(같은 Gateway 행) 적고, 성공 응답에서 legacy 는 지운다. 둘 다 있으면 canonical 이 이긴다.
+
+**EASY 로그인(계정 도구함).** 로그인해도 Gateway 쪽은 그대로 이 guest selection 이다 (KRRI ASAP 연동 유지).
+계정 도구함은 그 위의 영구 저장이다. Gateway 가 실제로 반영한 값만 계정에 적는다. 로그인 중이면 도구함을 읽기 전에 맞춘다:
+
+    계정 도구함이 아직 없음        → 지금 guest selection 을 그대로 계정에 저장 (빈 것도 "초기화된 빈 도구함")
+    이 세션이 이 guest 와 처음 맞춤 → 계정 도구함을 guest selection 에 PUT (다른 PC · 브라우저에서 복원)
+    이미 맞춘 guest               → 마지막으로 맞춘 값을 기준으로 3-way merge.
+                                    계정이 그대로면 Gateway 값(KRRI ASAP 쪽 변경 포함)을 계정에 저장하고,
+                                    다른 기기가 계정을 바꿨으면 그 변경을 이 guest 에 PUT 한다.
+
+등록 · 해제는 위로 맞춘 뒤 Gateway PUT 이 성공한 실제 결과만 계정에 저장한다. Gateway 가 실패하면 계정은 그대로다.
+로그아웃은 EASY 세션만 지운다. guest cookie 와 Gateway selection 은 건드리지 않는다.
 """
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from ..accounts import Login, current_login, guest_key
 from ..clients.selection import GATEWAY_GUEST_COOKIE, SelectionReply, registered_mcp_ids, valid_guest_id
 from .catalog import NOT_FOUND_DETAIL, card, find_planned, ordered_mcps
 
@@ -81,6 +94,50 @@ def _registered(request: Request, selection) -> list[str]:
     return registered_mcp_ids(selection, ordered_mcps(state.gateway.list_mcps(), state.presentation))
 
 
+def _merged(base: tuple[str, ...], gateway: list[str], account: list[str]) -> list[str]:
+    """마지막으로 맞춘 base 에서 Gateway 쪽 · 계정 쪽 변경을 합친다. 한쪽이라도 뺀 것은 빠지고, 더한 것은 들어간다."""
+    before, now, saved = set(base), set(gateway), set(account)
+    keep = {i for i in before if i in now and i in saved} | (now - before) | (saved - before)
+    return [i for i in dict.fromkeys([*gateway, *account]) if i in keep]
+
+
+def _current(request: Request, session: _Session, login: Login | None) -> list[str]:
+    """지금 도구함 (Gateway 가 반영한 실제 값). 로그인 중이면 계정 도구함과 맞춘 뒤의 값이다 (모듈 docstring)."""
+    client = request.app.state.selection
+    registered = _registered(request, session.take(client.get(session.guest_id)))
+    if login is None:
+        return registered
+    saved = request.app.state.accounts.toolbox(login.user)
+    guest = guest_key(session.guest_id)
+    if saved is None:
+        target = registered
+    elif login.synced_guest != guest or login.synced_mcp_ids is None:
+        target = saved
+    else:
+        target = _merged(login.synced_mcp_ids, registered, saved)
+    if set(target) != set(registered):
+        registered = _registered(request, session.take(client.put_groups(session.guest_id, target)))
+    unchanged = saved == registered and login.synced_guest == guest and list(login.synced_mcp_ids or ()) == registered
+    if not unchanged:
+        _save(request, session, login, registered)
+    return registered
+
+
+def _save(request: Request, session: _Session, login: Login | None, registered: list[str]):
+    if login is not None:
+        request.app.state.accounts.save_toolbox(login, guest_key(session.guest_id), registered)
+
+
+def sync_login(request: Request, response: Response, login: Login) -> None:
+    """로그인 직후 한 번 계정 도구함과 이 브라우저의 guest selection 을 맞춘다 (routes/auth.py).
+
+    Gateway 가 실패하면 GatewayUnavailable 이 그대로 올라간다 (cookie 는 건드리지 않는다).
+    """
+    session = _Session(request)
+    _current(request, session, login)
+    session.remember(response)
+
+
 def _refused(session: _Session, status_code: int, detail: str) -> JSONResponse:
     # HTTPException 으로 올리면 이번에 발급된 guest cookie 가 응답에서 빠진다.
     response = JSONResponse(status_code=status_code, content={"detail": detail})
@@ -129,9 +186,9 @@ async def toolbox_events(request: Request):
 @router.get("")
 def get_toolbox(request: Request, response: Response) -> dict:
     session = _Session(request)
-    selection = session.take(request.app.state.selection.get(session.guest_id))
+    registered = _current(request, session, current_login(request))
     session.remember(response)
-    return _body(request, _registered(request, selection))
+    return _body(request, registered)
 
 
 @router.post("/{mcp_id}")
@@ -139,9 +196,11 @@ def add_to_toolbox(mcp_id: str, request: Request, response: Response):
     _require_available(request, mcp_id)
     client = request.app.state.selection
     session = _Session(request)
-    registered = _registered(request, session.take(client.get(session.guest_id)))
+    login = current_login(request)
+    registered = _current(request, session, login)
     if mcp_id not in registered:
         registered = _registered(request, session.take(client.put_groups(session.guest_id, [*registered, mcp_id])))
+        _save(request, session, login, registered)
         if mcp_id not in registered:
             return _refused(session, 409, NOT_APPLIED_DETAIL)
     session.remember(response)
@@ -153,10 +212,12 @@ def remove_from_toolbox(mcp_id: str, request: Request, response: Response):
     _require_available(request, mcp_id)
     client = request.app.state.selection
     session = _Session(request)
-    registered = _registered(request, session.take(client.get(session.guest_id)))
+    login = current_login(request)
+    registered = _current(request, session, login)
     if mcp_id in registered:
         rest = [i for i in registered if i != mcp_id]
         registered = _registered(request, session.take(client.put_groups(session.guest_id, rest)))
+        _save(request, session, login, registered)
         if mcp_id in registered:
             return _refused(session, 409, NOT_APPLIED_DETAIL)
     session.remember(response)

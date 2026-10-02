@@ -82,6 +82,12 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
     }
   }, [load, show])
 
+  // 로그인 · 로그아웃 · 「다시 시도」 뒤 다시 읽기. 그 전에 떠난 다시 읽기의 응답(옛 상태)은 버린다.
+  const reload = useCallback(() => {
+    changeSeqRef.current += 1
+    return load()
+  }, [load])
+
   const change = useCallback(async (mcpId: string, call: (id: string) => Promise<Toolbox>) => {
     changingRef.current += 1
     changeSeqRef.current += 1
@@ -115,9 +121,9 @@ export default function ToolboxProvider({ children }: { children: ReactNode }) {
       errors,
       add: (id) => change(id, api.addToToolbox),
       remove: (id) => change(id, api.removeFromToolbox),
-      reload: load,
+      reload,
     }),
-    [toolbox, loadError, pending, errors, change, load],
+    [toolbox, loadError, pending, errors, change, reload],
   )
 
   return <ToolboxContext.Provider value={value}>{children}</ToolboxContext.Provider>

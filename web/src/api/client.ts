@@ -1,5 +1,5 @@
 // BFF 만 부른다. Gateway · MCP endpoint · agentic_ai 를 브라우저에서 직접 부르지 않는다.
-import type { DemoQuestion, Execution, McpCard, McpDetail, Toolbox } from '../types/api'
+import type { AuthState, DemoQuestion, Execution, McpCard, McpDetail, Toolbox } from '../types/api'
 
 // BFF 가 준 detail 문구만 싣는다 (BFF 가 이미 내부 정보를 걸러 낸 문구다).
 export class ApiError extends Error {
@@ -38,4 +38,13 @@ export const api = {
     request<Toolbox>(`/api/toolbox/${encodeURIComponent(mcpId)}`, { method: 'POST' }),
   removeFromToolbox: (mcpId: string) =>
     request<Toolbox>(`/api/toolbox/${encodeURIComponent(mcpId)}`, { method: 'DELETE' }),
+  // EASY 자체 로그인. 세션은 HttpOnly cookie 라 브라우저 코드는 token 을 보지 않는다.
+  me: () => request<AuthState>('/api/auth/me'),
+  login: (username: string, password: string) =>
+    request<AuthState>('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<AuthState>('/api/auth/logout', { method: 'POST' }),
 }

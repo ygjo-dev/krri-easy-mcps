@@ -205,7 +205,8 @@ Gateway 를 부를 때 `Cookie: asap_mcp_guest=<id>` 로 옮겨 싣는다. 처�
 예전 Portal cookie `kem_gateway_guest` (Path=/api) 는 이행용으로만 읽는다. 유효한 `asap_mcp_guest` 가 없을 때만 그 UUID 를 그대로
 `asap_mcp_guest` 로 올리고(같은 Gateway 행), 응답에서 legacy cookie 를 지운다. 둘 다 있으면 `asap_mcp_guest` 가 이긴다.
 형식(UUID v4)이 틀린 값은 어느 쪽이든 믿지 않는다.
-id 값은 JSON · 로그에 싣지 않는다. Authorization 은 보내지 않는다 (로그인 연동은 아직 없음).
+id 값은 JSON · 로그에 싣지 않는다. Authorization 은 보내지 않는다. EASY 자체 로그인(아래)이 있어도 Gateway 에는
+계속 guest cookie 만 간다 — EASY 계정 · 세션 token 을 Gateway 에 싣지 않는다.
 
 ### 다른 화면의 변경 신호
 
@@ -215,6 +216,46 @@ Gateway 는 같은 주인(guest cookie 또는 JWT sub)의 selection 이 PUT 으�
 브라우저로 넘기고, 브라우저는 신호를 받으면 `GET /api/toolbox` 로 다시 읽는다. 브라우저가 Gateway 를 직접 부르지 않는다.
 끊기면 브라우저가 1s → 2s → 5s(상한)로 다시 잇고, 다시 이어지면 한 번 다시 읽는다. 반복 조회(polling)는 없다.
 Gateway 한 process 안의 메모리 구독이라 Gateway 를 여러 개 띄우면 공유 broker 가 필요하다.
+
+### EASY 계정과 계정 도구함
+
+**EASY 로그인은 KRRI_ASAP 로그인(Keycloak/JWT)과 별개다.** EASY BFF 가 자기 사용자 · 세션을 가진다
+(`api/app/accounts.py`, `api/app/routes/auth.py`). KRRI_ASAP 계정 · token 을 쓰지 않고, KRRI_ASAP 에 EASY 계정을 알리지 않는다.
+계정 도구함은 위 guest selection 을 **대체하지 않고 그 위에 얹는 영구 저장**이다. 그래서 로그인해도 KRRI ASAP 와의 연동
+(같은 hostname 의 같은 `asap_mcp_guest` → 같은 Gateway selection, 아래 변경 신호)은 그대로다. 별도 「KRRI 연결」 절차는 없다.
+
+저장소: SQLite (`KEM_DB_PATH`, 기본 `data/easy.db`, gitignore). Python stdlib `sqlite3` 와 parameter binding 만 쓴다.
+
+| 표 | 내용 |
+|---|---|
+| `users` | `username` · `password_hash` (`hashlib.scrypt`, 계정마다 salt) · `role` (`USER` \| `ADMIN`) |
+| `account_toolboxes` | 계정 도구함 `mcp_ids` (JSON). **행이 없으면 아직 초기화 안 됨**, `[]` 이면 일부러 비운 도구함 |
+| `sessions` | `token_hash` (SHA-256) · user · 만료 시각 · 이 세션이 마지막으로 맞춘 guest(SHA-256)와 도구함 |
+
+- 초기 계정 `admin` / `admin` (ADMIN) 은 **개발 · 검증용**이다. 그 이름이 DB 에 없을 때만 만든다 (`KEM_ADMIN_*`).
+- 세션 cookie `kem_session`: opaque random token(`secrets.token_urlsafe(32)`), HttpOnly · SameSite=Lax · Path=/ · https 면 Secure ·
+  Max-Age = `KEM_SESSION_HOURS`. DB 에는 token 원문 대신 hash 만 둔다. 만료 세션은 읽을 때 · 로그인할 때 지운다.
+  `asap_mcp_guest` 와 다른 cookie 이고, 로그인 · 로그아웃이 guest cookie 를 바꾸거나 지우지 않는다.
+- 로그인 실패는 없는 아이디 · 틀린 비밀번호 모두 같은 401 문구이고, 없는 아이디도 같은 hash 비용을 쓴다.
+  로그인 body 는 JSON 만 받고(다른 사이트 form POST 로 로그인시키기 방지), 형식 오류도 입력값을 되돌려 보내지 않는다.
+- 응답에는 `{user: {username, role}}` 만 싣는다. password · hash · token · guest id 는 JSON · 로그에 없다.
+
+**동기화 규칙** (`api/app/routes/toolbox.py` `_current`). 로그인 중이면 도구함을 읽거나 바꾸기 전에 계정과 맞춘다.
+Gateway 가 실제로 반영한 값(PUT 응답 · GET 결과)만 계정에 저장한다.
+
+| 상황 | 동작 |
+|---|---|
+| 비로그인 | 이전과 같다. 계정 DB 를 읽거나 쓰지 않는다 |
+| 계정 도구함이 아직 없음 (첫 로그인) | 지금 guest selection 을 그대로 계정에 저장 (빈 selection 도 「초기화된 빈 도구함」) |
+| 이 세션이 이 guest 와 처음 맞춤 (저장된 계정으로 로그인 · 다른 PC/브라우저 · 로그인 중 guest cookie 가 바뀜) | 계정 도구함을 `PUT {groupIds}` 로 guest selection 에 적용 (복원) |
+| 이미 맞춘 guest | 마지막으로 맞춘 값을 기준으로 3-way merge. 계정이 그대로면 Gateway 값(KRRI ASAP 쪽 변경 포함)을 계정에 저장하고, 다른 기기가 계정을 바꿨으면 그 변경을 이 guest 에 PUT 한다 |
+| 로그인 중 EASY 등록 · 해제 | 위로 맞춘 뒤 Gateway PUT. 성공한 실제 결과만 계정에 저장. Gateway 오류(502)면 계정은 그대로, Gateway 가 반영 안 함(409)이면 반영된 실제 값만 저장 |
+| 로그아웃 | EASY 세션만 지운다. guest cookie · Gateway selection 은 그대로 (이 브라우저는 마지막 도구함을 guest 로 계속 쓴다) |
+
+로그인 API 는 응답 전에 한 번 맞춘다. 그때 Gateway 가 실패해도 로그인은 성공하고, 세션이 「아직 안 맞춤」으로 남아
+다음 도구함 요청에서 다시 맞춘다 (새 guest 의 값으로 저장된 계정을 덮지 않는다).
+KRRI ASAP 쪽 변경은 EASY 가 다시 읽을 때(신호 · focus) 계정에 들어간다. EASY 를 열지 않은 동안의 KRRI 쪽 변경은
+다음에 EASY 가 읽을 때 저장된다. 「관리자」(ADMIN) 역할은 UI 에 보이기만 하고 지금 권한 차이는 없다.
 
 ### 실패
 
