@@ -7,6 +7,7 @@ KRRI 가 제공하는 MCP 서버를 찾아보고, 상세 정보와 Tool 을 확�
 > 실제 KRRI_ASAP Gateway 를 쓴다 (기본은 mock). AI로 사용해보기는 `KEM_AGENTIC_AI_MODE=live` 에서 agentic_ai 의
 > 기존 `POST /chat/stream` 을 부른다 (기본은 mock).
 > EASY 자체 로그인(KRRI_ASAP 로그인과 별개)이 있고, 로그인하면 도구함이 계정에 저장된다. 비로그인 guest 도 그대로 쓸 수 있다.
+> EASY ADMIN 은 「AI Skills」(사용자용 Skill library: 등록 · 탐색 · ChatGPT/Claude 용 ZIP 내려받기)를 쓸 수 있다.
 
 ## 구조
 
@@ -17,13 +18,14 @@ krri-easy-mcps/
 │   ├── app/
 │   │   ├── main.py          앱 조립, /api/health
 │   │   ├── settings.py      KEM_* 환경변수 (내부 주소는 여기만)
-│   │   ├── accounts.py      EASY 자체 계정 · 세션 · 계정 도구함 (SQLite)
+│   │   ├── accounts.py      EASY 자체 계정 · 세션 · 계정 도구함 (SQLite), require_admin
+│   │   ├── skills.py        AI Skills package 검증 · 저장 · export
 │   │   ├── metadata.py      config/*.yaml 읽기
 │   │   ├── trace.py         agentic_ai 이벤트 → Portal 실행 결과
-│   │   ├── routes/          auth · catalog · demo · toolbox
+│   │   ├── routes/          auth · catalog · demo · toolbox · skills
 │   │   └── clients/         gateway.py · selection.py · agentic_ai.py (각각 mock | live)
 │   └── tests/
-├── data/                    easy.db (EASY 계정 DB. 실행 때 생김, gitignore)
+├── data/                    easy.db (EASY 계정 · Skill metadata DB) · skills/ (Skill package 파일). 실행 때 생김, gitignore
 ├── config/
 │   ├── presentation.yaml    Portal 전용 표시 정보 (mcp_id = Gateway group id 기준)
 │   ├── planned_mcps.yaml    개발 중 MCP (Gateway 에 아직 없음. 「개발 중」 카드만)
@@ -86,6 +88,8 @@ AI로 사용해보기를 실제 agentic_ai 로 실행하려면 `KEM_AGENTIC_AI_M
 | `/` | MCP 탐색. 카드(이름 · 제공 · 요약 · Tool 수 · 상태 · 분류 · 도구함 등록), 검색, 분류 필터. 개발 중 MCP 는 「개발 중」 배지만 (Tool 수 · 등록 버튼 없음) |
 | `/mcps/:mcpId` | MCP 상세. 왼쪽: 정보 · 도구함 등록/해제 · 상태/제공/Tools/분류 · 「Tool 목록」(접히는 행) / 「MCP 정보」 탭. 오른쪽: AI로 사용해보기 panel (좁은 화면에서는 아래로) |
 | `/toolbox` | 도구함. 내가 등록한 기존 MCP 카드와 해제. 비었으면 MCP 탐색으로 안내 |
+| `/skills` | AI Skills (EASY ADMIN 만, 메뉴도 ADMIN 에게만 보임). 설명 · 사용 순서 3단계 · 검색 · 태그 필터 · Skill 카드 · 새 Skill 등록(간단히 만들기 / ZIP 업로드) |
+| `/skills/:skillId` | Skill 상세. 버전 · 작성자 · 태그 · 업데이트 · SKILL.md 미리보기/원문 · 포함 파일 · 사용 예시 · 「ChatGPT용 ZIP 다운로드」/「Claude용 ZIP 다운로드」(ZIP 내려받기 + 추가 안내) · 원본 패키지 · 새 버전 · 삭제 |
 
 헤더 오른쪽은 EASY 계정이다. 비로그인이면 「로그인」(누르면 작은 로그인 창), 로그인하면 이름 · 「관리자」(ADMIN 일 때) · 「로그아웃」.
 로그인 · 로그아웃은 페이지를 새로 읽지 않고 도구함만 다시 읽는다.
@@ -112,6 +116,13 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 | GET | `/api/auth/me` | EASY 로그인 상태 `{user: null}` 또는 `{user: {username, role}}` (role `USER` \| `ADMIN`) |
 | POST | `/api/auth/login` | body `{username, password}` (JSON) → `{user}` + 세션 cookie. 틀리면 401 (없는 아이디와 같은 문구) |
 | POST | `/api/auth/logout` | EASY 세션만 끝냄 → `{user: null}` |
+| GET | `/api/skills` | Skill 카드 `{id, title, description, version, author, tags, compat{chatgpt, claude}, file_count, created_at, updated_at}` |
+| GET | `/api/skills/{id}` | 상세: 카드 + `main_file` · `skill_md` · `files[{path, size}]` · `examples[{path, content}]` · `warnings` · `created_by` |
+| POST | `/api/skills` | 간단히 만들기 (JSON `{id, title, description, version, author, tags, instructions, example}`) → 201. 같은 id 는 409 |
+| POST | `/api/skills/upload` | ZIP 등록 (body = ZIP, `Content-Type: application/zip`, query `title · version · author · tags` 선택) → 201 |
+| PUT | `/api/skills/{id}/package` | 같은 Skill 의 새 버전 ZIP (frontmatter name = id). 비운 표시 정보는 이전 값 |
+| DELETE | `/api/skills/{id}` | 삭제 → 204 |
+| GET | `/api/skills/{id}/download?target=chatgpt\|claude\|source` | ZIP 내려받기 |
 | GET | `/api/mcps` | catalog 카드 `{mcp_id, display_name, summary, category, organization, lifecycle, status, tool_count, source}`. 개발 중은 `lifecycle: "development"`, `status` · `tool_count` 가 null |
 | GET | `/api/mcps/{mcp_id}` | 상세: 카드 + Gateway group 의 `long_description` · `tags` · `connected_datasets[{name, description, geometry_kind}]` · `updated_at`(상태 확인 시각) + Tool/parameter. 개발 중은 빈 값 |
 | GET | `/api/mcps/{mcp_id}/demo-questions` | 고정 질문 `{question_id, display_text}` 만 |
@@ -138,6 +149,28 @@ guest selection 이라 KRRI ASAP 와의 자동 연동(같은 selection · SSE �
 
 자세한 규칙은 [docs/integration-boundary.md](docs/integration-boundary.md) 「EASY 계정과 계정 도구함」.
 
+`/api/skills*` 는 모두 서버에서 EASY ADMIN 인지 검사한다 (비로그인 401 · ADMIN 아님 403). 화면 메뉴 숨김은 안내일 뿐이다.
+
+## AI Skills
+
+실 내부에서 반복하는 AI 업무 방식을 **Skill package** 로 등록 · 탐색 · 내려받는 EASY 소유 library 다 (ADMIN 전용).
+KRRI_ASAP orchestrator 의 내부 skill 과 무관하고 그것을 가져오지 않는다. MCP 기능과도 섞지 않는다.
+
+- **형식**: [Agent Skills 규격](https://agentskills.io/specification). `<name>/SKILL.md` (YAML frontmatter `name` · `description` + Markdown 지시)
+  와 references/ · assets/ · scripts/ 등. `name` 은 영문 소문자 · 숫자 · 하이픈 64자 이하이고 Skill id 이자 ZIP 폴더 이름이다.
+  화면 이름(한글 가능) · 버전 · 작성자 · 태그는 EASY metadata 라 package 안에 넣지 않는다.
+- **canonical 한 벌**: 올린 파일을 그대로 보관하고, ChatGPT · Claude 용 ZIP 은 export 때 packaging 만 맞춘다 (단일 top-level `<id>/` 폴더,
+  main 파일 이름 `SKILL.md`). 두 서비스용 내용을 따로 고치지 않는다. 「원본 패키지」는 올린 main 파일 이름(SKILL.md / skill.md) 그대로다.
+- **설치는 사용자가 한다**: 「ChatGPT용 ZIP 다운로드」/「Claude용 ZIP 다운로드」는 ZIP 을 내려받고 짧은 안내를 보여 줄 뿐이다. EASY 는 두 서비스 계정에
+  설치하지 않고 설치됐다고 표시하지 않는다. 계정 · 요금제 · 워크스페이스에 따라 Skills 기능이 없을 수 있다.
+- **보안**: 올린 package 는 보관 · 미리보기 · export 만 한다. 서버는 script 를 실행 · import 하지 않고 파일은 실행 권한 없이(0644) 저장한다.
+  ZIP 은 `..` · 절대 경로 · 역슬래시 · symlink · 특수 파일 · 암호화 entry · 대소문자만 다른 중복 · SKILL.md 0개/2개 이상 ·
+  두 개 이상의 top-level 폴더를 거부하고, 크기 상한(ZIP 20MB · 파일 200개 · 파일 10MB · 전체 50MB)을 실제로 읽은 바이트로 센다.
+- **호환 표시**: 규격 검증을 통과하면 ChatGPT · Claude 둘 다 ✓. Claude 전용 제약(name 에 anthropic/claude, description 의 `< >`)에 걸리면
+  Claude 는 「확인 필요」와 이유를 보인다.
+- 저장: metadata 는 `data/easy.db` 의 `skills` 표, 파일은 `data/skills/<id>/source/` (`KEM_SKILLS_DIR`). repo 에 Skill 을 commit 하지 않는다.
+  예시 Skill 은 repo 에 넣지 않았다. 화면의 「간단히 만들기」로 바로 하나를 만들 수 있다.
+
 ## 책임 경계
 
 | | 맡는 것 |
@@ -163,6 +196,8 @@ guest selection 이라 KRRI ASAP 와의 자동 연동(같은 selection · SSE �
 
 - 도구함 selection 을 agentic_ai 실행 범위에 반영 (지금 agentic_ai 는 고정 실행 범위를 쓴다)
 - EASY 회원가입 · 사용자 관리 · 비밀번호 변경 화면 (지금은 DB 의 계정만. 구조는 USER/ADMIN 여러 계정을 지원)
+- AI Skills: 승인 · 게시 workflow, 조직별 공개 범위, 버전 이력(지금은 최신 버전만 보관), ChatGPT · Claude 자동 설치
+- 개인 ChatGPT · Claude 에서 KRRI EASY 를 직접 쓰는 Remote MCP 연결 (provider · 기관 network 결정 보류. prototype 은 local archive branch 에 보존)
 - 로그인 시도 제한 · 감사 로그 등 production 인증 기능
 - KRRI_ASAP 로그인(Keycloak) 연동은 하지 않는다 (EASY 계정은 의도적으로 별개)
 - OTP · R5 는 Gateway 가 tools/list 를 못 받는 운영 문제로 「상태 모름」이다

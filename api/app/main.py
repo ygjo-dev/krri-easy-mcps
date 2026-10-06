@@ -10,8 +10,9 @@ from .clients.agentic_ai import AgenticAiUnavailable, make_agentic_ai_client
 from .clients.gateway import GatewayUnavailable, make_gateway_client
 from .clients.selection import make_selection_client
 from .metadata import load_demo_questions, load_planned_mcps, load_presentation
-from .routes import auth, catalog, demo, toolbox
+from .routes import auth, catalog, demo, skills, toolbox
 from .settings import Settings, load_settings
+from .skills import SkillLibrary
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         admin_username=settings.admin_username,
         admin_password=settings.admin_password,
     )
+    # KRRI AI Skills (ADMIN 전용). metadata 는 같은 DB, package 파일은 skills_dir. MCP 기능과 섞지 않는다.
+    app.state.skills = SkillLibrary(settings.db_path, settings.skills_dir)
 
     @app.exception_handler(GatewayUnavailable)
     async def gateway_unavailable(request: Request, exc: GatewayUnavailable) -> JSONResponse:
@@ -63,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(demo.router)
     app.include_router(toolbox.router)
+    app.include_router(skills.router)
     return app
 
 

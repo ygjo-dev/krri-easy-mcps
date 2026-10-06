@@ -2,8 +2,11 @@ import { useEffect } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import AccountControls from './auth/AccountControls'
 import AuthProvider from './auth/AuthProvider'
+import { useAuth } from './auth/context'
 import CatalogPage from './pages/CatalogPage'
 import McpDetailPage from './pages/McpDetailPage'
+import SkillDetailPage from './pages/SkillDetailPage'
+import SkillsPage from './pages/SkillsPage'
 import ToolboxPage from './pages/ToolboxPage'
 import ToolboxProvider from './toolbox/ToolboxProvider'
 
@@ -17,6 +20,18 @@ function ScrollToTop() {
   return null
 }
 
+// AI Skills 는 EASY ADMIN 에게만 보인다 (권한 검사 자체는 BFF 가 한다).
+function MainNav() {
+  const { isAdmin } = useAuth()
+  return (
+    <nav aria-label="주 메뉴">
+      <NavLink to="/" end>MCP 탐색</NavLink>
+      <NavLink to="/toolbox">도구함</NavLink>
+      {isAdmin && <NavLink to="/skills">AI Skills</NavLink>}
+    </nav>
+  )
+}
+
 export default function App() {
   return (
     <ToolboxProvider>
@@ -25,10 +40,7 @@ export default function App() {
         <header className="site-header">
           <div className="container header-row">
             <Link to="/" className="brand">KRRI EASY MCPs</Link>
-            <nav aria-label="주 메뉴">
-              <NavLink to="/" end>MCP 탐색</NavLink>
-              <NavLink to="/toolbox">도구함</NavLink>
-            </nav>
+            <MainNav />
             <AccountControls />
           </div>
         </header>
@@ -37,6 +49,8 @@ export default function App() {
             <Route path="/" element={<CatalogPage />} />
             <Route path="/mcps/:mcpId" element={<McpDetailPage />} />
             <Route path="/toolbox" element={<ToolboxPage />} />
+            <Route path="/skills" element={<SkillsPage />} />
+            <Route path="/skills/:skillId" element={<SkillDetailPage />} />
             <Route
               path="*"
               element={

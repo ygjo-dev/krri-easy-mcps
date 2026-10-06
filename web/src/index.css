@@ -71,12 +71,13 @@ button:disabled { cursor: default; }
 .login-form { display: grid; gap: 14px; padding: 28px 24px 24px; }
 .login-form h2 { font-size: 20px; font-weight: 800; }
 .login-note { margin-top: -8px; color: var(--muted); font-size: 13px; }
-.field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
-.field input {
+.field { display: grid; align-content: start; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.field input, .field textarea {
   width: 100%; min-width: 0; height: 42px; padding: 0 14px; border-radius: 10px; border: 1px solid #3a3d42;
   background: var(--bg); color: var(--text); font-size: 14px; font-weight: 400; outline: none;
 }
-.field input:focus { border-color: var(--text-2); }
+.field input:focus, .field textarea:focus { border-color: var(--text-2); }
+.field textarea { height: auto; padding: 10px 14px; line-height: 1.55; resize: vertical; font-family: inherit; }
 .login-error { color: var(--danger); font-size: 13px; }
 .login-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
@@ -315,9 +316,147 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
 .ai-questions button[aria-pressed='true'] { box-shadow: inset 0 0 0 1.5px #2f6fed; }
 .ai-questions button:disabled { opacity: 0.55; }
 
+/* ── KRRI AI Skills (ADMIN) ─────────────────────────── */
+.page-head .eyebrow { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+.skills-head { padding-bottom: 28px; }
+.skills-head p:last-child { max-width: 640px; }
+
+.skill-steps { list-style: none; margin: 0 0 40px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.skill-steps li { display: flex; gap: 14px; align-items: flex-start; padding: 18px 20px; border-radius: var(--radius); background: var(--surface); }
+.skill-steps strong { font-size: 14px; }
+.skill-steps p { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.step-no {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(74, 158, 255, 0.14); color: var(--accent); font-size: 13px; font-weight: 800;
+}
+
+.skill-icon { font-size: 18px; }
+.mcp-icon-lg.skill-icon { font-size: 40px; }
+.skill-card .mcp-card-summary { -webkit-line-clamp: 2; }
+.skill-card .skill-tags { margin: 14px 0 0; }
+.skill-card .mcp-card-foot { padding-top: 16px; }
+.skill-updated { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.compat-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.compat-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px;
+  background: rgba(74, 158, 255, 0.12); color: var(--accent); font-size: 12px; font-weight: 700; line-height: 1.4;
+}
+.compat-badge::before { content: '✓'; font-size: 11px; }
+.compat-off { background: rgba(227, 179, 65, 0.12); color: var(--stage); }
+.compat-off::before { content: '!'; }
+.gate-block { margin-top: 64px; }
+.empty-skills { padding: 64px 20px; }
+
+.skill-id-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.skill-id { font-size: 13px; color: var(--muted); }
+.stats .stats-small { font-size: 14px; }
+.skill-warnings { margin: 0 0 24px; }
+.skill-warnings ul { margin: 6px 0 0; padding-left: 18px; }
+
+.segmented { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface-2); gap: 2px; }
+.segmented button { border: 0; background: transparent; color: var(--muted); padding: 7px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+.segmented button[aria-selected='true'], .segmented button[aria-pressed='true'] { background: var(--text); color: var(--bg); }
+.segmented-sm button { padding: 4px 12px; font-size: 12px; }
+
+.skill-doc { padding: 0; overflow: hidden; }
+.skill-doc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 12px 24px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.skill-doc > .markdown, .skill-doc > .md-raw { padding: 20px 24px 24px; }
+.markdown { font-size: 14px; line-height: 1.75; color: var(--text-2); overflow-wrap: anywhere; }
+.markdown > * + * { margin-top: 12px; }
+.markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { color: var(--text); line-height: 1.4; }
+.markdown h2 { font-size: 20px; }
+.markdown h3 { font-size: 16px; margin-top: 22px; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 14px; margin-top: 18px; }
+.markdown ul, .markdown ol { margin-bottom: 0; padding-left: 22px; }
+.markdown li + li { margin-top: 4px; }
+.markdown code { font-size: 12.5px; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); color: var(--text); }
+.markdown a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.markdown blockquote { margin-left: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.markdown hr { border: 0; border-top: 1px solid var(--line); }
+.md-code, .md-raw {
+  margin: 0; padding: 14px 16px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line);
+  font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2);
+}
+.md-code code { padding: 0; background: none; }
+.skill-doc > .md-raw { border: 0; border-radius: 0; background: transparent; }
+.md-ref { color: var(--text); text-decoration: underline dotted; text-underline-offset: 3px; }
+
+.file-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.file-list li { display: flex; justify-content: space-between; gap: 16px; padding: 9px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+.file-path { min-width: 0; overflow-wrap: anywhere; color: var(--text); }
+.example-list h2 { font-size: 13px; color: var(--text-2); }
+
+.manage-skill { margin-top: 12px; padding-top: 24px; border-top: 1px solid var(--line); }
+.manage-skill h2 { font-size: 15px; margin-bottom: 6px; }
+.manage-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.manage-version { width: 180px; }
+.pill-danger { background: transparent; color: var(--danger); border-color: rgba(255, 122, 112, 0.45); }
+.pill-danger:hover:not(:disabled) { border-color: var(--danger); }
+.form-error { color: var(--danger); font-size: 13px; margin-top: 10px; }
+.form-ok { color: var(--accent); font-size: 13px; margin-top: 10px; }
+
+/* 「AI에 추가」: MCP 상세의 AI panel 과 같은 밝은 면 */
+.add-inline { display: none; }
+.add-panel { max-height: none; }
+.add-panel-body { display: grid; gap: 10px; padding: 22px 20px 20px; }
+.add-title { font-size: 16px; }
+.add-lead { font-size: 13px; color: var(--panel-muted); margin-bottom: 6px; }
+.add-button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 14px 16px;
+  border: 0; border-radius: 14px; background: var(--panel-text); color: #fff; text-align: left;
+}
+.add-button span { font-size: 15px; font-weight: 700; }
+.add-button small { font-size: 12px; color: #b9bcc4; }
+.add-button:hover:not(:disabled) { background: #33353b; }
+.add-button:disabled { opacity: 0.6; }
+.add-warn { font-size: 12px; color: #9a6a00; }
+.add-panel .form-error { margin-top: 0; color: #c62828; }
+.add-source { justify-self: center; margin-top: 4px; font-size: 13px; color: var(--panel-text); }
+
+/* 공통 창 (Skill 등록 · 설치 안내) */
+.modal {
+  width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 0; border-radius: 20px;
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); overflow: hidden;
+}
+/* 머리는 두고 본문만 스크롤한다. 닫힌 dialog 를 보이게 하지 않도록 [open] 에만 flex */
+.modal[open] { display: flex; flex-direction: column; }
+.modal-wide { width: min(720px, calc(100vw - 32px)); }
+.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 22px 24px 0; }
+.modal-head h2 { font-size: 20px; font-weight: 800; }
+.modal-close { width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; }
+.modal-close:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.modal-body { padding: 18px 24px 24px; overflow-y: auto; scrollbar-color: #4a4e55 transparent; }
+.modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 20px; }
+
+.skill-form { display: grid; gap: 14px; margin-top: 18px; }
+.form-lead { font-size: 13px; color: var(--muted); }
+.form-lead code, .section-note code { font-size: 12px; color: var(--text-2); }
+.form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.field-hint { font-size: 12px; font-weight: 400; color: var(--muted); }
+.field-optional { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.field-label { display: block; }
+.mono-input { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace !important; font-size: 13px !important; }
+.file-field input { height: auto; padding: 10px 14px; }
+.skill-form .modal-actions { margin-top: 4px; }
+
+.install-file { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: rgba(74, 158, 255, 0.1); font-size: 14px; overflow-wrap: anywhere; }
+.install-check { color: var(--accent); font-weight: 800; }
+.install-lead { margin-top: 16px; font-size: 14px; color: var(--text-2); }
+.install-steps { margin: 12px 0 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 8px; }
+.install-steps li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; font-size: 14px; }
+.install-steps li::before {
+  content: counter(step); flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 800; margin-top: 1px;
+}
+.install-note { margin-top: 14px; font-size: 12px; color: var(--muted); }
+
 /* ── responsive ────────────────────────────────────── */
 @media (max-width: 1080px) {
   .detail-layout { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  .add-inline { display: block; margin-bottom: 28px; }
+  .skill-side { display: none; }
   .detail-side { position: static; }
   .ai-panel { max-height: none; }
   .ai-body { overflow: visible; }
@@ -360,6 +499,16 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
   .tool-body dd, .info-box dd { margin-bottom: 10px; }
   .info-box { padding: 20px; }
   .detail-section { padding: 18px 20px; }
+  .skill-steps { grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 28px; }
+  .skill-steps li { padding: 12px 16px; }
+  .toolbar-controls { flex-wrap: wrap; }
+  .toolbar-controls .pill-primary { flex: 1 0 100%; }
+  .form-row, .form-row-3 { grid-template-columns: minmax(0, 1fr); }
+  .modal-head { padding: 18px 18px 0; }
+  .modal-body { padding: 14px 18px 18px; }
+  .skill-doc > .markdown, .skill-doc > .md-raw { padding: 16px 18px 18px; }
+  .skill-doc-head { padding: 10px 12px 10px 18px; }
+  .mcp-icon-lg.skill-icon { font-size: 30px; }
 }
 
 /* 계정 칸이 들어갈 자리가 없으면 머리를 두 줄로: 브랜드 · 계정 / 메뉴 */

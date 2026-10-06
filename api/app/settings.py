@@ -30,12 +30,15 @@ class Settings:
     db_path: Path
     # EASY 로그인 세션 수명 (시간). 지나면 다시 로그인한다.
     session_hours: float
+    # AI Skills package 파일 (DB 에는 metadata 만). 기본: db_path 옆 skills/. commit 하지 않는다.
+    skills_dir: Path
     # 개발용 초기 관리자 계정. DB 에 이 이름이 없을 때 한 번만 만든다 (이미 있으면 비밀번호를 바꾸지 않는다).
     admin_username: str
     admin_password: str
 
 
 def load_settings() -> Settings:
+    db_path = Path(os.environ.get("KEM_DB_PATH", REPO_ROOT / "data" / "easy.db"))
     return Settings(
         config_dir=Path(os.environ.get("KEM_CONFIG_DIR", REPO_ROOT / "config")),
         gateway_mode=os.environ.get("KEM_GATEWAY_MODE", MOCK),
@@ -44,7 +47,8 @@ def load_settings() -> Settings:
         gateway_cache_seconds=float(os.environ.get("KEM_GATEWAY_CACHE_SECONDS", "60")),
         agentic_ai_base_url=os.environ.get("KEM_AGENTIC_AI_BASE_URL", ""),
         agentic_ai_timeout_seconds=float(os.environ.get("KEM_AGENTIC_AI_TIMEOUT_SECONDS", "360")),
-        db_path=Path(os.environ.get("KEM_DB_PATH", REPO_ROOT / "data" / "easy.db")),
+        db_path=db_path,
+        skills_dir=Path(os.environ.get("KEM_SKILLS_DIR", db_path.parent / "skills")),
         session_hours=float(os.environ.get("KEM_SESSION_HOURS", "168")),
         admin_username=os.environ.get("KEM_ADMIN_USERNAME", "admin"),
         admin_password=os.environ.get("KEM_ADMIN_PASSWORD", "admin"),

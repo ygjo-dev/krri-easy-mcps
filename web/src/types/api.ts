@@ -100,3 +100,58 @@ export interface AuthUser {
 export interface AuthState {
   user: AuthUser | null
 }
+
+// KRRI AI Skills (ADMIN 전용). Skill = ChatGPT · Claude 가 읽는 Agent Skills package (SKILL.md + 참고 파일).
+// MCP 와 다른 기능이다.
+export type SkillTarget = 'chatgpt' | 'claude' | 'source'
+
+// 각 서비스에 그대로 올릴 수 있는지. false 면 detail.warnings 에 이유가 있다
+export interface SkillCompat {
+  chatgpt: boolean
+  claude: boolean
+}
+
+export interface SkillCard {
+  id: string
+  title: string
+  description: string
+  version: string
+  author: string
+  tags: string[]
+  compat: SkillCompat
+  file_count: number
+  // unix 초
+  created_at: number
+  updated_at: number
+}
+
+export interface SkillDetail extends SkillCard {
+  // SKILL.md 의 package 안 경로 (올린 이름 그대로: SKILL.md 또는 skill.md)
+  main_file: string
+  // SKILL.md 원문 (frontmatter 포함, 앞부분만)
+  skill_md: string
+  files: { path: string; size: number }[]
+  // examples/ 폴더의 텍스트 파일
+  examples: { path: string; content: string }[]
+  warnings: string[]
+  created_by: string
+}
+
+export interface CreateSkillInput {
+  id: string
+  title: string
+  description: string
+  version: string
+  author: string
+  tags: string[]
+  instructions: string
+  example: string
+}
+
+// ZIP 업로드 때 화면 표시 정보. 비우면 SKILL.md frontmatter metadata (또는 이전 버전 값)
+export interface SkillUploadMeta {
+  title?: string
+  version?: string
+  author?: string
+  tags?: string
+}

@@ -23,7 +23,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 SESSION_COOKIE = "kem_session"
 SESSION_COOKIE_PATH = "/"
@@ -136,10 +136,7 @@ class AccountStore:
         return self._session_seconds
 
     def _db(self):
-        """요청마다 짧게 여는 연결. ``with self._db() as db`` 한 덩어리가 transaction 하나다."""
-        conn = sqlite3.connect(self._path, timeout=10)
-        conn.execute("PRAGMA foreign_keys = ON")
-        return _Transaction(conn)
+        return open_db(self._path)
 
     # ── users ─────────────────────────────────────────────
 
@@ -229,6 +226,13 @@ class AccountStore:
             )
 
 
+def open_db(path: Path) -> "_Transaction":
+    """요청마다 짧게 여는 연결. ``with open_db(path) as db`` 한 덩어리가 transaction 하나다 (skills.py 도 같은 DB)."""
+    conn = sqlite3.connect(path, timeout=10)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return _Transaction(conn)
+
+
 class _Transaction:
     """sqlite3 연결의 ``with`` 는 commit/rollback 만 하고 닫지 않는다. 여기서는 닫기까지 한다."""
 
@@ -243,5 +247,19 @@ class _Transaction:
             return self._conn.__exit__(*exc)
 
 
+LOGIN_REQUIRED_DETAIL = "로그인이 필요합니다."
+ADMIN_REQUIRED_DETAIL = "관리자만 사용할 수 있습니다."
+
+
 def current_login(request: Request) -> Login | None:
     return request.app.state.accounts.login(request.cookies.get(SESSION_COOKIE))
+
+
+def require_admin(request: Request) -> Login:
+    """서버 쪽 ADMIN 검사 (FastAPI dependency). 로그인 안 함 → 401, ADMIN 아님 → 403. EASY 자체 role 만 본다."""
+    login = current_login(request)
+    if login is None:
+        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED_DETAIL)
+    if login.user.role != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail=ADMIN_REQUIRED_DETAIL)
+    return login

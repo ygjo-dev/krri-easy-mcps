@@ -273,6 +273,18 @@ Gateway `POST /api/tools/execute` 는 명시 `user_context` 가 없으면 요청
 그래서 도구함 selection 은 KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 실행 범위는 바꾸지 않는다.
 guest cookie 는 ASAP-web 과 같다 (위 「사용자 식별」).
 
+## KRRI AI Skills (EASY 소유, ADMIN 전용)
+
+AI Skills 는 MCP · Gateway · agentic_ai 와 연결되지 않는 EASY 자체 기능이다 (`api/app/skills.py`, `api/app/routes/skills.py`).
+KRRI_ASAP orchestrator 의 내부 skill 을 읽거나 노출하지 않는다. 의존 방향 그림에도 들어가지 않는다.
+
+- 권한: router 전체에 `require_admin` (EASY 세션의 role). 비로그인 401 · ADMIN 아님 403. KRRI_ASAP Keycloak role 은 보지 않는다.
+- 외부 서비스: ChatGPT · Claude 를 부르지 않는다. 공식 설치 API 를 흉내 내지 않고 업로드할 ZIP 만 만든다.
+  package 형식 근거 (2026-10 확인): Claude 「Create custom skills」 — ZIP 은 `<skill-name>/SKILL.md` 를 top level 로, name 은 소문자 · 숫자 · 하이픈
+  64자, folder 이름 = name, description 1024자. OpenAI skills — 단일 top-level folder, SKILL.md 이름 매칭은 대소문자 무시, zip 50MB · 500 파일.
+  두 서비스 모두 [Agent Skills 규격](https://agentskills.io/specification)을 따른다. export 결과는 공식 `skills-ref validate` 를 통과한다 (live smoke).
+- 올린 package 는 실행하지 않는다 (README 「AI Skills」의 ZIP 검증 규칙).
+
 ## Future backlog: 신규 MCP server onboarding
 
 신규 endpoint 를 KRRI 시스템에 등록하는 것은 도구함과 다른 기능이며 지금 범위가 아니다. 후보 Gateway API 는
@@ -282,3 +294,4 @@ guest cookie 는 ASAP-web 과 같다 (위 「사용자 식별」).
 ## Browser → BFF
 
 브라우저는 같은 origin 의 `/api/*` 만 부른다. 내부 URL · credential 은 BFF 환경변수에만 둔다.
+Skill ZIP 은 multipart 가 아니라 요청 body 그대로 보낸다 (`Content-Type: application/zip`, 새 dependency 없음).
