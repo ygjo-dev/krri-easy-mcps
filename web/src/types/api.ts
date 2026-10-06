@@ -4,7 +4,7 @@ export type Status = 'online' | 'offline' | 'unknown'
 
 // available   Gateway 에 있는 logical MCP (market group). status · tool_count 가 있다
 // development 개발 중. Gateway 에 아직 없다. status · tool_count 가 null (0개 · 사용 불가가 아니다).
-//             도구함 등록 · AI 실행 대상이 아니다
+//             내 MCP 등록 · AI 실행 대상이 아니다
 export type Lifecycle = 'available' | 'development'
 
 // MCP 하나 = logical MCP (mcp_id). physical server 는 BFF 안의 구현 세부라 여기에 없다.
@@ -84,7 +84,7 @@ export interface Execution {
   limitations: string[]
 }
 
-// 도구함. 브라우저는 mcp_id 만 안다 (Gateway selection 내부 표현은 BFF 가 숨긴다).
+// 내 MCP. 브라우저는 mcp_id 만 안다 (Gateway selection 내부 표현은 BFF 가 숨긴다).
 export interface Toolbox {
   mcp_ids: string[]
   mcps: McpCard[]

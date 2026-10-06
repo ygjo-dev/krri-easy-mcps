@@ -26,7 +26,7 @@ class Settings:
     agentic_ai_base_url: str
     # agentic 한 요청(LLM 해석 + KRRI 실행)을 기다리는 시간.
     agentic_ai_timeout_seconds: float
-    # EASY 자체 계정 · 세션 · 계정 도구함 DB (SQLite). KRRI_ASAP 로그인과 별개다. commit 하지 않는다 (data/ 는 gitignore).
+    # EASY 자체 계정 · 세션 · 계정 내 MCP DB (SQLite). KRRI_ASAP 로그인과 별개다. commit 하지 않는다 (data/ 는 gitignore).
     db_path: Path
     # EASY 로그인 세션 수명 (시간). 지나면 다시 로그인한다.
     session_hours: float

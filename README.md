@@ -3,10 +3,10 @@
 KRRI 가 제공하는 MCP 서버를 찾아보고, 상세 정보와 Tool 을 확인하고,
 미리 준비된 질문으로 「AI로 사용해보기」를 해 보는 Portal 이다. UI + thin BFF 로만 이루어진다.
 
-> **현재 상태.** MCP 목록 · Tool · 상태와 도구함(사용자별 MCP selection)은 `KEM_GATEWAY_MODE=live` 에서
+> **현재 상태.** MCP 목록 · Tool · 상태와 내 MCP(사용자별 MCP selection)은 `KEM_GATEWAY_MODE=live` 에서
 > 실제 KRRI_ASAP Gateway 를 쓴다 (기본은 mock). AI로 사용해보기는 `KEM_AGENTIC_AI_MODE=live` 에서 agentic_ai 의
 > 기존 `POST /chat/stream` 을 부른다 (기본은 mock).
-> EASY 자체 로그인(KRRI_ASAP 로그인과 별개)이 있고, 로그인하면 도구함이 계정에 저장된다. 비로그인 guest 도 그대로 쓸 수 있다.
+> EASY 자체 로그인(KRRI_ASAP 로그인과 별개)이 있고, 로그인하면 내 MCP이 계정에 저장된다. 비로그인 guest 도 그대로 쓸 수 있다.
 > EASY ADMIN 은 「AI Skills」(사용자용 Skill library: 등록 · 탐색 · ChatGPT/Claude 용 ZIP 내려받기)를 쓸 수 있다.
 
 ## 구조
@@ -18,7 +18,7 @@ krri-easy-mcps/
 │   ├── app/
 │   │   ├── main.py          앱 조립, /api/health
 │   │   ├── settings.py      KEM_* 환경변수 (내부 주소는 여기만)
-│   │   ├── accounts.py      EASY 자체 계정 · 세션 · 계정 도구함 (SQLite), require_admin
+│   │   ├── accounts.py      EASY 자체 계정 · 세션 · 계정 내 MCP (SQLite), require_admin
 │   │   ├── skills.py        AI Skills package 검증 · 저장 · export
 │   │   ├── metadata.py      config/*.yaml 읽기
 │   │   ├── trace.py         agentic_ai 이벤트 → Portal 실행 결과
@@ -74,7 +74,7 @@ BFF 가 처음 뜰 때 `data/easy.db` (SQLite, `KEM_DB_PATH`) 를 만들고 **�
 `admin` / `admin` (role ADMIN)** 을 넣는다. 설정 없이 바로 로그인된다. 운영에 쓸 비밀번호가 아니다.
 `KEM_ADMIN_USERNAME` · `KEM_ADMIN_PASSWORD` 는 그 이름의 계정이 DB 에 없을 때 한 번만 쓰인다 (있으면 비밀번호를 바꾸지 않는다).
 비밀번호는 scrypt + salt hash 로만 저장한다. 세션 수명은 `KEM_SESSION_HOURS` (기본 168시간).
-DB 를 지우면 계정 · 세션 · 계정 도구함이 모두 초기화된다 (Gateway selection 은 그대로).
+DB 를 지우면 계정 · 세션 · 계정 내 MCP이 모두 초기화된다 (Gateway selection 은 그대로).
 
 AI로 사용해보기를 실제 agentic_ai 로 실행하려면 `KEM_AGENTIC_AI_MODE=live` 와 `KEM_AGENTIC_AI_BASE_URL` 을 더한다
 (예: 개발 장비 `http://127.0.0.1:8000`). 한 요청은 LLM 해석과 KRRI 실행을 포함하므로 기본 360초
@@ -85,16 +85,16 @@ AI로 사용해보기를 실제 agentic_ai 로 실행하려면 `KEM_AGENTIC_AI_M
 
 | route | 내용 |
 |---|---|
-| `/` | MCP 탐색. 카드(이름 · 제공 · 요약 · Tool 수 · 상태 · 분류 · 도구함 등록), 검색, 분류 필터. 개발 중 MCP 는 「개발 중」 배지만 (Tool 수 · 등록 버튼 없음) |
-| `/mcps/:mcpId` | MCP 상세. 왼쪽: 정보 · 도구함 등록/해제 · 상태/제공/Tools/분류 · 「Tool 목록」(접히는 행) / 「MCP 정보」 탭. 오른쪽: AI로 사용해보기 panel (좁은 화면에서는 아래로) |
-| `/toolbox` | 도구함. 내가 등록한 기존 MCP 카드와 해제. 비었으면 MCP 탐색으로 안내 |
+| `/` | 전체 MCP. 카드(이름 · 제공 · 요약 · Tool 수 · 상태 · 분류 · 내 MCP 등록), 검색, 분류 필터. 개발 중 MCP 는 「개발 중」 배지만 (Tool 수 · 등록 버튼 없음) |
+| `/mcps/:mcpId` | MCP 상세. 왼쪽: 정보 · 내 MCP 등록/해제 · 상태/제공/Tools/분류 · 「Tool 목록」(접히는 행) / 「MCP 정보」 탭. 오른쪽: AI로 사용해보기 panel (좁은 화면에서는 아래로) |
+| `/toolbox` | 내 MCP. 내가 등록한 기존 MCP 카드와 해제. 비었으면 전체 MCP으로 안내 |
 | `/skills` | AI Skills (EASY ADMIN 만, 메뉴도 ADMIN 에게만 보임). 설명 · 사용 순서 3단계 · 검색 · 태그 필터 · Skill 카드 · 새 Skill 등록(간단히 만들기 / ZIP 업로드) |
 | `/skills/:skillId` | Skill 상세. 버전 · 작성자 · 태그 · 업데이트 · SKILL.md 미리보기/원문 · 포함 파일 · 사용 예시 · 「ChatGPT용 ZIP 다운로드」/「Claude용 ZIP 다운로드」(ZIP 내려받기 + 추가 안내) · 원본 패키지 · 새 버전 · 삭제 |
 
 헤더 오른쪽은 EASY 계정이다. 비로그인이면 「로그인」(누르면 작은 로그인 창), 로그인하면 이름 · 「관리자」(ADMIN 일 때) · 「로그아웃」.
-로그인 · 로그아웃은 페이지를 새로 읽지 않고 도구함만 다시 읽는다.
+로그인 · 로그아웃은 페이지를 새로 읽지 않고 내 MCP만 다시 읽는다.
 
-화면 구성은 Kakao PlayMCP 의 정보 구조(카드 · 상세 · 도구함 · AI 채팅 panel)를 따른다. Kakao 로고 · 이미지는 쓰지 않고,
+화면 구성은 Kakao PlayMCP 의 정보 구조(카드 · 상세 · 내 MCP · AI 채팅 panel)를 따른다. Kakao 로고 · 이미지는 쓰지 않고,
 MCP 아이콘은 모노그램이다. 모든 logical MCP 상세에 「AI에게 이렇게 물어보세요」 질문이 있다. AI로 사용해보기는 그중 실행 질문만 실행하고
 (자유 입력 없음), agentic_ai 에 기능이 아직 없는 MCP 의 질문은 「예시」로만 보인다. live 에서는 tool 단위
 Request/Response 를 보여 주지 않는다 (기존 `/chat/stream` 이벤트에 없다).
@@ -102,9 +102,9 @@ Request/Response 를 보여 주지 않는다 (기존 `/chat/stream` 이벤트에
 **MCP 하나 = logical MCP.** 화면의 단위는 physical MCP server 가 아니라 KRRI_ASAP Gateway `tool-groups.json` 의
 market group 이고, group id 가 `mcp_id` 다. 한 server(ASAP Core)가 여러 MCP 로 나뉘고, 여러 server(OTP + R5)가
 MCP 하나로 묶인다. 개발 중 MCP(`config/planned_mcps.yaml`)는 Gateway 에 없고 「개발 중」으로만 보인다
-(도구함 등록 · AI 실행 불가, 사용 불가 · Tool 0개로 표시하지 않음).
+(내 MCP 등록 · AI 실행 불가, 사용 불가 · Tool 0개로 표시하지 않음).
 
-Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도구함 등록은 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것**이고,
+Catalog 카드에도 「내 MCP에 등록」/「등록됨」이 있다. **내 MCP 등록은 이미 KRRI 에 있는 MCP 를 내 selection 에 넣는 것**이고,
 신규 MCP server 를 시스템에 추가하는 기능(onboarding)은 future backlog 다.
 
 자유 질문 입력과 Tool 직접 테스트 화면은 없다.
@@ -128,27 +128,27 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 | GET | `/api/mcps/{mcp_id}` | 상세: 카드 + Gateway group 의 `long_description` · `tags` · `connected_datasets[{name, description, geometry_kind}]` · `updated_at`(상태 확인 시각) + Tool/parameter. 개발 중은 빈 값 |
 | GET | `/api/mcps/{mcp_id}/demo-questions` | 질문 `{question_id, display_text, runnable}` 만 |
 | POST | `/api/demo/questions/{question_id}/execute` | 실행 질문 실행 → trace(단계마다 `mcp_name`) + 최종 답변. 예시 질문은 409 |
-| GET | `/api/toolbox` | 내 도구함 `{mcp_ids, mcps: [catalog 카드]}` |
-| POST | `/api/toolbox/{mcp_id}` | 도구함에 등록 (이미 있으면 그대로) → 도구함. 개발 중은 409 |
-| DELETE | `/api/toolbox/{mcp_id}` | 도구함에서 해제 (없으면 그대로) → 도구함. 개발 중은 409 |
-| GET | `/api/toolbox/events` | 도구함이 다른 화면(KRRI-ASAP 등)에서 바뀌면 오는 신호 (text/event-stream, `selection_changed`). 받으면 `GET /api/toolbox` 로 다시 읽는다 |
+| GET | `/api/toolbox` | 내 내 MCP `{mcp_ids, mcps: [catalog 카드]}` |
+| POST | `/api/toolbox/{mcp_id}` | 내 MCP에 등록 (이미 있으면 그대로) → 내 MCP. 개발 중은 409 |
+| DELETE | `/api/toolbox/{mcp_id}` | 내 MCP에서 해제 (없으면 그대로) → 내 MCP. 개발 중은 409 |
+| GET | `/api/toolbox/events` | 내 MCP이 다른 화면(KRRI-ASAP 등)에서 바뀌면 오는 신호 (text/event-stream, `selection_changed`). 받으면 `GET /api/toolbox` 로 다시 읽는다 |
 
-도구함은 Gateway `GET/PUT /api/me/mcp-selections` 를 쓴다. ASAP-web MCP market 과 같게 `{groupIds}` 만 PUT 하므로
+내 MCP은 Gateway `GET/PUT /api/me/mcp-selections` 를 쓴다. ASAP-web MCP market 과 같게 `{groupIds}` 만 PUT 하므로
 Gateway selection 에는 등록한 `mcp_id` 가 groupId 로 들어간다. 사용자는 Gateway 의 guest cookie `asap_mcp_guest` (HttpOnly, Path=/) 로 구분한다. ASAP-web 과 같은 cookie 라 같은 hostname 이면 두 화면이 같은 selection 을 쓴다.
 
-**EASY 계정 도구함.** EASY 로그인은 KRRI_ASAP 로그인(Keycloak/JWT)과 별개다. 로그인해도 Gateway 쪽은 그대로 이 브라우저의
+**EASY 계정 내 MCP.** EASY 로그인은 KRRI_ASAP 로그인(Keycloak/JWT)과 별개다. 로그인해도 Gateway 쪽은 그대로 이 브라우저의
 guest selection 이라 KRRI ASAP 와의 자동 연동(같은 selection · SSE 신호)은 바뀌지 않는다. 계정은 그 selection 을 저장 · 복원한다.
 
 | 상황 | 동작 |
 |---|---|
 | 비로그인 | 이전과 같다 (계정 DB 를 안 씀) |
-| 처음 로그인하는 계정 | 지금 guest selection 을 계정 도구함으로 저장 (빈 것도 「초기화된 빈 도구함」) |
-| 저장된 계정으로 로그인 (다른 PC · 브라우저 포함) | 계정 도구함을 이 브라우저의 guest selection 에 PUT → KRRI ASAP 도 같은 selection |
+| 처음 로그인하는 계정 | 지금 guest selection 을 계정 내 MCP으로 저장 (빈 것도 「초기화된 빈 내 MCP」) |
+| 저장된 계정으로 로그인 (다른 PC · 브라우저 포함) | 계정 내 MCP을 이 브라우저의 guest selection 에 PUT → KRRI ASAP 도 같은 selection |
 | 로그인 중 EASY 에서 등록 · 해제 | Gateway PUT 이 성공한 실제 결과만 계정에 저장. 실패하면 계정은 그대로 |
 | 로그인 중 KRRI ASAP 에서 변경 | SSE 신호로 EASY 가 `GET /api/toolbox` 할 때 그 실제 selection 을 계정에 저장 |
 | 로그아웃 | EASY 세션만 끝냄. `asap_mcp_guest` 와 Gateway selection 은 그대로, 다시 guest 동작 |
 
-자세한 규칙은 [docs/integration-boundary.md](docs/integration-boundary.md) 「EASY 계정과 계정 도구함」.
+자세한 규칙은 [docs/integration-boundary.md](docs/integration-boundary.md) 「EASY 계정과 계정 내 MCP」.
 
 `/api/skills*` 는 모두 서버에서 EASY ADMIN 인지 검사한다 (비로그인 401 · ADMIN 아님 403). 화면 메뉴 숨김은 안내일 뿐이다.
 
@@ -176,7 +176,7 @@ KRRI_ASAP orchestrator 의 내부 skill 과 무관하고 그것을 가져오지 
 
 | | 맡는 것 |
 |---|---|
-| **KRRI EASY MCPs** | catalog · 검색 · 상세 · 표시 정보 · 도구함 UI · AI로 사용해보기 UI. BFF 는 내부 client 호출과 응답 변환만 |
+| **KRRI EASY MCPs** | catalog · 검색 · 상세 · 표시 정보 · 내 MCP UI · AI로 사용해보기 UI. BFF 는 내부 client 호출과 응답 변환만 |
 | **agentic_ai** | Resolve · Ontology · Recipe 선택 · workflow materialization · 실행 orchestration (source of truth) |
 | **KRRI_ASAP** | Gateway · MCP registry · MCP 실행 |
 
@@ -195,7 +195,7 @@ KRRI_ASAP orchestrator 의 내부 skill 과 무관하고 그것을 가져오지 
 
 ## 아직 안 된 것
 
-- 도구함 selection 을 agentic_ai 실행 범위에 반영 (지금 agentic_ai 는 고정 실행 범위를 쓴다)
+- 내 MCP selection 을 agentic_ai 실행 범위에 반영 (지금 agentic_ai 는 고정 실행 범위를 쓴다)
 - EASY 회원가입 · 사용자 관리 · 비밀번호 변경 화면 (지금은 DB 의 계정만. 구조는 USER/ADMIN 여러 계정을 지원)
 - AI Skills: 승인 · 게시 workflow, 조직별 공개 범위, 버전 이력(지금은 최신 버전만 보관), ChatGPT · Claude 자동 설치
 - 개인 ChatGPT · Claude 에서 KRRI EASY 를 직접 쓰는 Remote MCP 연결 (provider · 기관 network 결정 보류. prototype 은 local archive branch 에 보존)

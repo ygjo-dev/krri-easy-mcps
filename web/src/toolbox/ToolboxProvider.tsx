@@ -4,7 +4,7 @@ import type { Toolbox } from '../types/api'
 import { ToolboxContext, type ToolboxState } from './context'
 import { subscribeToolboxChanges } from './selectionEvents'
 
-// 도구함 상태 한 벌. Catalog · Detail · 도구함 화면이 같은 값을 본다.
+// 내 MCP 상태 한 벌. Catalog · Detail · 내 MCP 화면이 같은 값을 본다.
 // 성공 응답(BFF 가 돌려준 실제 selection)으로만 바꾼다. 실패하면 이전 상태를 그대로 둔다.
 export default function ToolboxProvider({ children }: { children: ReactNode }) {
   const [toolbox, setToolbox] = useState<Toolbox | null>(null)

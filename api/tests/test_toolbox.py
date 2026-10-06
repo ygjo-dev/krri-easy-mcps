@@ -1,4 +1,4 @@
-"""도구함: Browser → BFF → Gateway /api/me/mcp-selections. 단위는 logical MCP(= Gateway group).
+"""내 MCP: Browser → BFF → Gateway /api/me/mcp-selections. 단위는 logical MCP(= Gateway group).
 
 FakeSelectionGateway 는 Gateway mcpMarket.service 의 정규화를 필요한 만큼 흉내 낸다:
 groupIds 는 아는 group 만, toolRefs = group 의 정의 refs + 명시 refs 중 등록된 server 것만 (소문자 · 중복 제거),
@@ -251,7 +251,7 @@ def test_add_get_remove_writes_group_id(client, gw):
     assert gw.store[guest] == {"groupIds": [], "serverIds": [], "toolRefs": []}
     # 첫 GET 뒤로는 모든 Gateway 호출이 같은 guest 로 갔다
     assert {g for _, g in gw.calls[1:]} == {guest}
-    # 다른 브라우저(cookie 없음)는 다른 도구함
+    # 다른 브라우저(cookie 없음)는 다른 내 MCP
     assert TestClient(client.app).get("/api/toolbox").json()["mcp_ids"] == []
 
 
@@ -314,7 +314,7 @@ def test_add_keeps_other_groups(app, gw):
     c = seeded_client(app, gw, ["krri-road-cctv", "web-research"], [])
     guest = c.cookies.get(GUEST_COOKIE)
     body = c.post("/api/toolbox/route-accessibility").json()
-    # 도구함은 Catalog 와 같은 순서 (presentation.yaml)
+    # 내 MCP은 Catalog 와 같은 순서 (presentation.yaml)
     assert body["mcp_ids"] == ["krri-road-cctv", "web-research", "route-accessibility"]
     assert gw.store[guest]["groupIds"] == ["krri-road-cctv", "web-research", "route-accessibility"]
 

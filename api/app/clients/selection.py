@@ -1,4 +1,4 @@
-"""KRRI_ASAP Gateway 사용자별 MCP selection (도구함) boundary.
+"""KRRI_ASAP Gateway 사용자별 MCP selection (내 MCP) boundary.
 
 **Gateway contract (ASAP-Gateway src/features/mcpMarket, 2026-09-29 read-only 재확인)**
 
@@ -16,7 +16,7 @@ PUT /api/me/mcp-selections           (권한 ANYONE, body strict {groupIds?, too
 HttpOnly · SameSite=Lax · Path=/ · 1년). cookie 가 없거나 형식이 틀리면 Gateway 가 새 UUID 를
 만들어 Set-Cookie 로 준다. user id 는 "guest:<uuid>".
 
-**Portal 의 도구함 = groupIds.** 등록 · 해제는 ASAP-web MCP market 과 같게 ``{groupIds}`` 만 PUT 한다.
+**Portal 의 내 MCP = groupIds.** 등록 · 해제는 ASAP-web MCP market 과 같게 ``{groupIds}`` 만 PUT 한다.
 그래서 두 화면이 같은 selection 을 같은 뜻으로 읽고 쓴다. 「등록됨」 판정도 Gateway market 의
 isApplied 와 같다: groupIds 가 있으면 그 목록, 없으면(legacy toolRefs 만 있는 selection) toolRefs 가
 group 의 정의 refs 를 모두 덮는 group. PUT 이 groupIds 만 실으므로 group 으로 안 펼쳐지는 explicit
@@ -90,7 +90,7 @@ def _selection(data) -> Selection:
     )
 
 
-# ── logical MCP(group) 단위 도구함 ↔ Gateway selection ──────────────────
+# ── logical MCP(group) 단위 내 MCP ↔ Gateway selection ──────────────────
 
 
 def _refs_cover(selected_refs: tuple[str, ...], group_refs: list[str]) -> bool:
@@ -102,7 +102,7 @@ def _refs_cover(selected_refs: tuple[str, ...], group_refs: list[str]) -> bool:
 
 
 def registered_mcp_ids(selection: Selection, mcps: list[dict]) -> list[str]:
-    """도구함에 「등록됨」인 logical MCP id. Gateway market isApplied 와 같은 판정, catalog 순서."""
+    """내 MCP에 「등록됨」인 logical MCP id. Gateway market isApplied 와 같은 판정, catalog 순서."""
     if selection.group_ids:
         chosen = set(selection.group_ids)
         return [m["mcp_id"] for m in mcps if m["mcp_id"] in chosen]

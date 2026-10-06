@@ -16,7 +16,7 @@ STAGE_DEVELOPMENT = "development"
 class PlannedMcp:
     """아직 Gateway server · group 이 없는 MCP. Catalog 에 「개발 중」으로만 보인다.
 
-    Tool · status 가 없다 (0개 · offline 이 아니라 아직 없는 것). 도구함 등록 · AI 실행 대상이 아니다.
+    Tool · status 가 없다 (0개 · offline 이 아니라 아직 없는 것). 내 MCP 등록 · AI 실행 대상이 아니다.
     """
 
     mcp_id: str

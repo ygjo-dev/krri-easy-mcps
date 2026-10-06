@@ -4,7 +4,7 @@ import type { AuthUser } from '../types/api'
 import { useToolbox } from '../toolbox/context'
 import { AuthContext, type AuthContextValue } from './context'
 
-// 로그인 · 로그아웃이 끝나면 도구함을 서버에서 다시 읽는다. 로그인 때 BFF 가 계정 도구함과 이 브라우저의
+// 로그인 · 로그아웃이 끝나면 내 MCP을 서버에서 다시 읽는다. 로그인 때 BFF 가 계정 내 MCP과 이 브라우저의
 // Gateway guest selection 을 맞추므로(첫 로그인 = 가져오기, 저장된 계정 = 복원) 그 결과가 바로 화면에 온다.
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const { reload } = useToolbox()

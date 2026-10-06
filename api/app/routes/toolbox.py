@@ -1,4 +1,4 @@
-"""도구함. 이미 KRRI 에 있는 logical MCP 를 사용자 selection 에 넣고 빼는 것 (신규 MCP server 등록이 아니다).
+"""내 MCP. 이미 KRRI 에 있는 logical MCP 를 사용자 selection 에 넣고 빼는 것 (신규 MCP server 등록이 아니다).
 
 브라우저 contract 는 mcp_id 뿐이다. Gateway selection 에는 그 mcp_id 가 groupId 로 들어간다
 (ASAP-web MCP market 과 같은 표현). groupIds · toolRefs 계산은 여기서 끝난다.
@@ -12,11 +12,11 @@ cookie 는 port 를 가리지 않으므로 같은 hostname 에 뜬 ASAP-web 이 
 예전 Portal cookie(LEGACY_GUEST_COOKIE, Path=/api) 는 이행용으로만 읽는다. 유효한 canonical 이 없을 때만 그 UUID 를
 그대로 canonical 로 올려(같은 Gateway 행) 적고, 성공 응답에서 legacy 는 지운다. 둘 다 있으면 canonical 이 이긴다.
 
-**EASY 로그인(계정 도구함).** 로그인해도 Gateway 쪽은 그대로 이 guest selection 이다 (KRRI ASAP 연동 유지).
-계정 도구함은 그 위의 영구 저장이다. Gateway 가 실제로 반영한 값만 계정에 적는다. 로그인 중이면 도구함을 읽기 전에 맞춘다:
+**EASY 로그인(계정 내 MCP).** 로그인해도 Gateway 쪽은 그대로 이 guest selection 이다 (KRRI ASAP 연동 유지).
+계정 내 MCP은 그 위의 영구 저장이다. Gateway 가 실제로 반영한 값만 계정에 적는다. 로그인 중이면 내 MCP을 읽기 전에 맞춘다:
 
-    계정 도구함이 아직 없음        → 지금 guest selection 을 그대로 계정에 저장 (빈 것도 "초기화된 빈 도구함")
-    이 세션이 이 guest 와 처음 맞춤 → 계정 도구함을 guest selection 에 PUT (다른 PC · 브라우저에서 복원)
+    계정 내 MCP이 아직 없음        → 지금 guest selection 을 그대로 계정에 저장 (빈 것도 "초기화된 빈 내 MCP")
+    이 세션이 이 guest 와 처음 맞춤 → 계정 내 MCP을 guest selection 에 PUT (다른 PC · 브라우저에서 복원)
     이미 맞춘 guest               → 마지막으로 맞춘 값을 기준으로 3-way merge.
                                     계정이 그대로면 Gateway 값(KRRI ASAP 쪽 변경 포함)을 계정에 저장하고,
                                     다른 기기가 계정을 바꿨으면 그 변경을 이 guest 에 PUT 한다.
@@ -40,8 +40,8 @@ GUEST_COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # Gateway asap_mcp_guest 와 같다.
 LEGACY_GUEST_COOKIE = "kem_gateway_guest"
 LEGACY_GUEST_COOKIE_PATH = "/api"
 
-NOT_APPLIED_DETAIL = "Gateway 가 이 MCP 를 도구함에 반영하지 않았습니다."
-IN_DEVELOPMENT_DETAIL = "개발 중인 MCP 는 도구함에 등록할 수 없습니다."
+NOT_APPLIED_DETAIL = "Gateway 가 이 MCP 를 내 MCP에 반영하지 않았습니다."
+IN_DEVELOPMENT_DETAIL = "개발 중인 MCP 는 내 MCP에 등록할 수 없습니다."
 
 
 class _Session:
@@ -102,7 +102,7 @@ def _merged(base: tuple[str, ...], gateway: list[str], account: list[str]) -> li
 
 
 def _current(request: Request, session: _Session, login: Login | None) -> list[str]:
-    """지금 도구함 (Gateway 가 반영한 실제 값). 로그인 중이면 계정 도구함과 맞춘 뒤의 값이다 (모듈 docstring)."""
+    """지금 내 MCP (Gateway 가 반영한 실제 값). 로그인 중이면 계정 내 MCP과 맞춘 뒤의 값이다 (모듈 docstring)."""
     client = request.app.state.selection
     registered = _registered(request, session.take(client.get(session.guest_id)))
     if login is None:
@@ -129,7 +129,7 @@ def _save(request: Request, session: _Session, login: Login | None, registered: 
 
 
 def sync_login(request: Request, response: Response, login: Login) -> None:
-    """로그인 직후 한 번 계정 도구함과 이 브라우저의 guest selection 을 맞춘다 (routes/auth.py).
+    """로그인 직후 한 번 계정 내 MCP과 이 브라우저의 guest selection 을 맞춘다 (routes/auth.py).
 
     Gateway 가 실패하면 GatewayUnavailable 이 그대로 올라간다 (cookie 는 건드리지 않는다).
     """
@@ -157,7 +157,7 @@ def _require_available(request: Request, mcp_id: str):
 
 @router.get("/events")
 async def toolbox_events(request: Request):
-    """도구함이 다른 화면(KRRI-ASAP 등)에서 바뀌면 오는 신호 (text/event-stream).
+    """내 MCP이 다른 화면(KRRI-ASAP 등)에서 바뀌면 오는 신호 (text/event-stream).
 
     Gateway 의 selection 신호 흐름을 이 guest 로 열어 바이트 그대로 넘긴다. 신호를 해석하거나 selection 을 싣지 않는다
     — 브라우저는 신호를 받으면 GET /api/toolbox 로 다시 읽는다. 브라우저가 끊으면 Gateway 쪽 흐름도 닫는다.

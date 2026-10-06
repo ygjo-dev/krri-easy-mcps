@@ -76,7 +76,7 @@ Request/Response 전체는 기존 API 만으로 줄 수 없다. live 에서 `ste
 ### Portal MCP = Gateway logical MCP (market group)
 
 사용자-facing 단위는 physical MCP server 가 아니라 **KRRI_ASAP Gateway `ASAP-Gateway/data/tool-groups.json` 의 group** 이다.
-group id 가 Portal 의 `mcp_id` 이고, Catalog · 상세 URL · 도구함 · 고정 질문이 모두 이 id 로 묶인다. physical server 는 runtime
+group id 가 Portal 의 `mcp_id` 이고, Catalog · 상세 URL · 내 MCP · 고정 질문이 모두 이 id 로 묶인다. physical server 는 runtime
 구현 세부라 브라우저 JSON 에 싣지 않는다 (BFF 안에서만 `server_ids` · `tool_refs` 를 둔다).
 
 - 한 server 가 여러 MCP 로 나뉜다: `asap-mcp-core` (40 tool) → `krri-map-location` · `krri-railway-network` · `krri-admin-boundary` … 12개
@@ -95,7 +95,7 @@ Portal 에도 안 보이므로, 고칠 곳은 KRRI_ASAP `tool-groups.json` 이�
 | tool name · description · inputSchema | `GET /api/tools` (ANYONE) | authoritative. ASAP-orchestrator 도 쓰는 live discovery 경로. **write 는 아니지만 호출마다 `registry.refreshTools()`** — 모든 MCP 에 tools/list 를 보내고 Gateway 메모리의 tool cache · status 를 갱신한다 |
 
 BFF 는 두 GET 의 결과를 `KEM_GATEWAY_CACHE_SECONDS`(기본 60) 동안 한 벌로 재사용한다.
-그 안의 Catalog / Detail / 도구함 요청은 Gateway catalog 를 다시 부르지 않는다.
+그 안의 Catalog / Detail / 내 MCP 요청은 Gateway catalog 를 다시 부르지 않는다.
 
 쓰지 않는 것: `/api/admin/mcp-servers[/:id]` (Keycloak ADMIN JWT 필요, 응답에 server `url` · `headers` 포함),
 admin POST/PUT/DELETE, `/refresh`, `/test`. Portal BFF 에 ADMIN credential 을 두지 않는다.
@@ -147,7 +147,7 @@ route-accessibility = `교통 접근성 분석`).
 
 - 카드 · 상세는 `lifecycle: "development"`, `status: null`, `tool_count: null`, `source: "planned"`. 화면은 「개발 중」 배지만 보인다
   (「사용 불가」 · 「상태 모름」 · Tool 0개로 보이지 않는다).
-- 도구함 `POST/DELETE /api/toolbox/{id}` 는 409 이고 Gateway 를 부르지 않는다. 대화 예시가 없고, 개발 중 MCP 에 질문을 붙이면 BFF 가 뜨지 않는다.
+- 내 MCP `POST/DELETE /api/toolbox/{id}` 는 409 이고 Gateway 를 부르지 않는다. 대화 예시가 없고, 개발 중 MCP 에 질문을 붙이면 BFF 가 뜨지 않는다.
 - 같은 id 의 group 이 Gateway 에 생기면 planned entry 는 무시된다(로그 경고). 공개되면 planned 에서 지우고 presentation 으로 옮긴다.
 
 지금 entry: `gtfs-accessibility-aro` (GTFS 기반 접근성 분석 MCP · 아로), `gtfs-accessibility-university` (같은 이름 · 시립대),
@@ -175,9 +175,9 @@ route-accessibility = `교통 접근성 분석`).
 실행 결과의 `steps[].mcp_name` 은 그 단계 Tool 을 가진 MCP 이름이다. 후보는 `expected_mcp_ids` 뿐이고 소속은 Gateway group Tool 로
 판단한다. 하나로 정해지지 않거나 Gateway 를 못 읽으면 `null` 이고, 실행 결과 자체는 그대로 돌려준다.
 
-## 도구함 (toolbox) — 기존 MCP 의 사용자 selection
+## 내 MCP (toolbox) — 기존 MCP 의 사용자 selection
 
-**도구함 등록 = 이미 KRRI 에 있는 logical MCP 를 내 selection 에 넣는 것.** 신규 MCP server 를 시스템에 추가하는 것이 아니다.
+**내 MCP 등록 = 이미 KRRI 에 있는 logical MCP 를 내 selection 에 넣는 것.** 신규 MCP server 를 시스템에 추가하는 것이 아니다.
 
 `api/app/clients/selection.py` · `api/app/routes/toolbox.py`. Gateway 의 기존 selection API 만 쓴다.
 
@@ -191,7 +191,7 @@ route-accessibility = `교통 접근성 분석`).
 - `serverIds`: toolRefs 에서 뽑은 파생 값. 입력으로는 legacy (groupIds · toolRefs 가 둘 다 비었을 때만 `<id>/*` 로 바뀜).
 
 **Portal 의 canonical selection 은 `groupIds` 다.** ASAP-web MCP market (`ASAP-web/apps/asap/src/features/mcp/api.ts`
-`updateMcpSelections`) 과 같은 표현을 쓰므로, 같은 사용자라면 두 화면이 같은 도구함을 같은 뜻으로 읽고 쓴다.
+`updateMcpSelections`) 과 같은 표현을 쓰므로, 같은 사용자라면 두 화면이 같은 내 MCP을 같은 뜻으로 읽고 쓴다.
 
 | 동작 | Gateway 에 보내는 것 |
 |---|---|
@@ -226,11 +226,11 @@ Gateway 는 같은 주인(guest cookie 또는 JWT sub)의 selection 이 PUT 으�
 끊기면 브라우저가 1s → 2s → 5s(상한)로 다시 잇고, 다시 이어지면 한 번 다시 읽는다. 반복 조회(polling)는 없다.
 Gateway 한 process 안의 메모리 구독이라 Gateway 를 여러 개 띄우면 공유 broker 가 필요하다.
 
-### EASY 계정과 계정 도구함
+### EASY 계정과 계정 내 MCP
 
 **EASY 로그인은 KRRI_ASAP 로그인(Keycloak/JWT)과 별개다.** EASY BFF 가 자기 사용자 · 세션을 가진다
 (`api/app/accounts.py`, `api/app/routes/auth.py`). KRRI_ASAP 계정 · token 을 쓰지 않고, KRRI_ASAP 에 EASY 계정을 알리지 않는다.
-계정 도구함은 위 guest selection 을 **대체하지 않고 그 위에 얹는 영구 저장**이다. 그래서 로그인해도 KRRI ASAP 와의 연동
+계정 내 MCP은 위 guest selection 을 **대체하지 않고 그 위에 얹는 영구 저장**이다. 그래서 로그인해도 KRRI ASAP 와의 연동
 (같은 hostname 의 같은 `asap_mcp_guest` → 같은 Gateway selection, 아래 변경 신호)은 그대로다. 별도 「KRRI 연결」 절차는 없다.
 
 저장소: SQLite (`KEM_DB_PATH`, 기본 `data/easy.db`, gitignore). Python stdlib `sqlite3` 와 parameter binding 만 쓴다.
@@ -238,8 +238,8 @@ Gateway 한 process 안의 메모리 구독이라 Gateway 를 여러 개 띄우�
 | 표 | 내용 |
 |---|---|
 | `users` | `username` · `password_hash` (`hashlib.scrypt`, 계정마다 salt) · `role` (`USER` \| `ADMIN`) |
-| `account_toolboxes` | 계정 도구함 `mcp_ids` (JSON). **행이 없으면 아직 초기화 안 됨**, `[]` 이면 일부러 비운 도구함 |
-| `sessions` | `token_hash` (SHA-256) · user · 만료 시각 · 이 세션이 마지막으로 맞춘 guest(SHA-256)와 도구함 |
+| `account_toolboxes` | 계정 내 MCP `mcp_ids` (JSON). **행이 없으면 아직 초기화 안 됨**, `[]` 이면 일부러 비운 내 MCP |
+| `sessions` | `token_hash` (SHA-256) · user · 만료 시각 · 이 세션이 마지막으로 맞춘 guest(SHA-256)와 내 MCP |
 
 - 초기 계정 `admin` / `admin` (ADMIN) 은 **개발 · 검증용**이다. 그 이름이 DB 에 없을 때만 만든다 (`KEM_ADMIN_*`).
 - 세션 cookie `kem_session`: opaque random token(`secrets.token_urlsafe(32)`), HttpOnly · SameSite=Lax · Path=/ · https 면 Secure ·
@@ -249,20 +249,20 @@ Gateway 한 process 안의 메모리 구독이라 Gateway 를 여러 개 띄우�
   로그인 body 는 JSON 만 받고(다른 사이트 form POST 로 로그인시키기 방지), 형식 오류도 입력값을 되돌려 보내지 않는다.
 - 응답에는 `{user: {username, role}}` 만 싣는다. password · hash · token · guest id 는 JSON · 로그에 없다.
 
-**동기화 규칙** (`api/app/routes/toolbox.py` `_current`). 로그인 중이면 도구함을 읽거나 바꾸기 전에 계정과 맞춘다.
+**동기화 규칙** (`api/app/routes/toolbox.py` `_current`). 로그인 중이면 내 MCP을 읽거나 바꾸기 전에 계정과 맞춘다.
 Gateway 가 실제로 반영한 값(PUT 응답 · GET 결과)만 계정에 저장한다.
 
 | 상황 | 동작 |
 |---|---|
 | 비로그인 | 이전과 같다. 계정 DB 를 읽거나 쓰지 않는다 |
-| 계정 도구함이 아직 없음 (첫 로그인) | 지금 guest selection 을 그대로 계정에 저장 (빈 selection 도 「초기화된 빈 도구함」) |
-| 이 세션이 이 guest 와 처음 맞춤 (저장된 계정으로 로그인 · 다른 PC/브라우저 · 로그인 중 guest cookie 가 바뀜) | 계정 도구함을 `PUT {groupIds}` 로 guest selection 에 적용 (복원) |
+| 계정 내 MCP이 아직 없음 (첫 로그인) | 지금 guest selection 을 그대로 계정에 저장 (빈 selection 도 「초기화된 빈 내 MCP」) |
+| 이 세션이 이 guest 와 처음 맞춤 (저장된 계정으로 로그인 · 다른 PC/브라우저 · 로그인 중 guest cookie 가 바뀜) | 계정 내 MCP을 `PUT {groupIds}` 로 guest selection 에 적용 (복원) |
 | 이미 맞춘 guest | 마지막으로 맞춘 값을 기준으로 3-way merge. 계정이 그대로면 Gateway 값(KRRI ASAP 쪽 변경 포함)을 계정에 저장하고, 다른 기기가 계정을 바꿨으면 그 변경을 이 guest 에 PUT 한다 |
 | 로그인 중 EASY 등록 · 해제 | 위로 맞춘 뒤 Gateway PUT. 성공한 실제 결과만 계정에 저장. Gateway 오류(502)면 계정은 그대로, Gateway 가 반영 안 함(409)이면 반영된 실제 값만 저장 |
-| 로그아웃 | EASY 세션만 지운다. guest cookie · Gateway selection 은 그대로 (이 브라우저는 마지막 도구함을 guest 로 계속 쓴다) |
+| 로그아웃 | EASY 세션만 지운다. guest cookie · Gateway selection 은 그대로 (이 브라우저는 마지막 내 MCP을 guest 로 계속 쓴다) |
 
 로그인 API 는 응답 전에 한 번 맞춘다. 그때 Gateway 가 실패해도 로그인은 성공하고, 세션이 「아직 안 맞춤」으로 남아
-다음 도구함 요청에서 다시 맞춘다 (새 guest 의 값으로 저장된 계정을 덮지 않는다).
+다음 내 MCP 요청에서 다시 맞춘다 (새 guest 의 값으로 저장된 계정을 덮지 않는다).
 KRRI ASAP 쪽 변경은 EASY 가 다시 읽을 때(신호 · focus) 계정에 들어간다. EASY 를 열지 않은 동안의 KRRI 쪽 변경은
 다음에 EASY 가 읽을 때 저장된다. 「관리자」(ADMIN) 역할은 UI 에 보이기만 하고 지금 권한 차이는 없다.
 
@@ -279,7 +279,7 @@ Gateway `POST /api/tools/execute` 는 명시 `user_context` 가 없으면 요청
 (`adminBoundary.*` 는 Gateway `SYSTEM_MCP_TOOL_REFS` 기본값이라 selection 과 무관하게 proxy 실행 범위에 들어간다.)
 **지금 8000 번의 agentic_ai 는 이 header 를 읽지 않는다.** agentic 은 KRRI `POST /workflow/execute` 를 부를 때
 고정 `USER_CONTEXT` 로 `X-User-ID` · `X-User-MCP-Tools` 를 붙인다 (asap-mcp-core · r5-server · otp-router, web-search 없음).
-그래서 도구함 selection 은 KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 실행 범위는 바꾸지 않는다.
+그래서 내 MCP selection 은 KRRI 쪽 selection 저장소와 orchestrator 계약에는 반영되지만, 현재 agentic_ai 실행 범위는 바꾸지 않는다.
 guest cookie 는 ASAP-web 과 같다 (위 「사용자 식별」).
 
 ## KRRI AI Skills (EASY 소유, ADMIN 전용)
@@ -296,7 +296,7 @@ KRRI_ASAP orchestrator 의 내부 skill 을 읽거나 노출하지 않는다. �
 
 ## Future backlog: 신규 MCP server onboarding
 
-신규 endpoint 를 KRRI 시스템에 등록하는 것은 도구함과 다른 기능이며 지금 범위가 아니다. 후보 Gateway API 는
+신규 endpoint 를 KRRI 시스템에 등록하는 것은 내 MCP과 다른 기능이며 지금 범위가 아니다. 후보 Gateway API 는
 `POST /api/admin/mcp-servers/test` (ADMIN JWT, body `{id, type, url, name?, description?, headers?, timeoutMs?}` →
 `{ok, server, toolCount, tools, error?}`) 와 `POST /api/admin/mcp-servers` 다. Portal 에 ADMIN credential 을 둘지 정한 뒤 다룬다.
 

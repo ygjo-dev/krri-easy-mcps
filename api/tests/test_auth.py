@@ -1,4 +1,4 @@
-"""EASY 자체 로그인 + 계정 도구함. KRRI_ASAP 로그인과 별개이고, Gateway 쪽은 계속 guest selection 이다.
+"""EASY 자체 로그인 + 계정 내 MCP. KRRI_ASAP 로그인과 별개이고, Gateway 쪽은 계속 guest selection 이다.
 
 Gateway 는 test_toolbox 의 FakeSelectionGateway 로 흉내 낸다. 「KRRI ASAP 에서 바꿈」은 같은 guest 의 Gateway 행을
 직접 바꾸는 것으로 모사한다 (ASAP-web 은 같은 cookie 로 같은 행에 {groupIds} 를 PUT 한다).
@@ -320,7 +320,7 @@ def test_guest_toolbox_never_touches_account_db(app, gw):
         assert db.execute("SELECT COUNT(*) FROM sessions").fetchone() == (0,)
 
 
-# ── 계정 도구함 ↔ Gateway guest selection ─────────────────
+# ── 계정 내 MCP ↔ Gateway guest selection ─────────────────
 
 
 def test_first_login_adopts_current_guest_toolbox(app, gw):
@@ -336,7 +336,7 @@ def test_first_login_adopts_current_guest_toolbox(app, gw):
 
 
 def test_empty_guest_initializes_an_empty_account_toolbox(app, gw):
-    """B. 빈 guest 도 「초기화된 빈 도구함」이 된다. 그래서 다른 브라우저에서 로그인하면 빈 도구함이 복원된다."""
+    """B. 빈 guest 도 「초기화된 빈 내 MCP」이 된다. 그래서 다른 브라우저에서 로그인하면 빈 내 MCP이 복원된다."""
     login(browser(app, gw))
     assert account_toolbox(app) == []
     other = browser(app, gw, ["web-research"])
@@ -347,7 +347,7 @@ def test_empty_guest_initializes_an_empty_account_toolbox(app, gw):
 
 
 def test_login_on_another_browser_restores_account_toolbox(app, gw):
-    """C. 다른 PC · 브라우저(다른 guest)에서 같은 계정으로 로그인하면 계정 도구함을 그 guest selection 에 PUT 한다."""
+    """C. 다른 PC · 브라우저(다른 guest)에서 같은 계정으로 로그인하면 계정 내 MCP을 그 guest selection 에 PUT 한다."""
     pc1 = browser(app, gw, ["krri-road-cctv"])
     login(pc1)
     pc1.post("/api/toolbox/route-accessibility")
@@ -387,7 +387,7 @@ def test_add_and_remove_while_logged_in_are_saved_to_account(app, gw):
 
 
 def test_gateway_write_failure_does_not_touch_account(app, gw):
-    """D. Gateway PUT 이 실패하면 계정 도구함은 그대로다."""
+    """D. Gateway PUT 이 실패하면 계정 내 MCP은 그대로다."""
     c = browser(app, gw, ["krri-road-cctv"])
     login(c)
     real = gw.__call__
@@ -465,7 +465,7 @@ def test_change_from_another_device_reaches_this_browser(app, gw):
 
 
 def test_new_guest_in_same_session_is_restored_not_mirrored(app, gw):
-    """로그인 중 guest cookie 가 바뀌어도(쿠키 삭제 등) 빈 새 guest 로 계정 도구함을 덮어쓰지 않는다."""
+    """로그인 중 guest cookie 가 바뀌어도(쿠키 삭제 등) 빈 새 guest 로 계정 내 MCP을 덮어쓰지 않는다."""
     c = browser(app, gw, ["krri-road-cctv"])
     login(c)
     new_guest = gw.seed([], [])
@@ -475,7 +475,7 @@ def test_new_guest_in_same_session_is_restored_not_mirrored(app, gw):
 
 
 def test_login_sync_failure_still_logs_in_and_syncs_later(app, gw):
-    """로그인 때 Gateway 가 안 되면 로그인만 하고, 다음 도구함 요청에서 맞춘다 (새 guest 값으로 계정을 덮지 않는다)."""
+    """로그인 때 Gateway 가 안 되면 로그인만 하고, 다음 내 MCP 요청에서 맞춘다 (새 guest 값으로 계정을 덮지 않는다)."""
     login(browser(app, gw, ["krri-road-cctv"]))
     pc2 = browser(app, gw, ["web-research"])
     gw.fail = GatewayUnavailable("down")

@@ -25,8 +25,8 @@ function MainNav() {
   const { isAdmin } = useAuth()
   return (
     <nav aria-label="주 메뉴">
-      <NavLink to="/" end>MCP 탐색</NavLink>
-      <NavLink to="/toolbox">도구함</NavLink>
+      <NavLink to="/" end>전체 MCP</NavLink>
+      <NavLink to="/toolbox">내 MCP</NavLink>
       {isAdmin && <NavLink to="/skills">AI Skills</NavLink>}
     </nav>
   )
@@ -56,7 +56,7 @@ export default function App() {
               element={
                 <div className="state-block">
                   <p>페이지를 찾을 수 없습니다.</p>
-                  <Link to="/" className="pill pill-primary">MCP 탐색</Link>
+                  <Link to="/" className="pill pill-primary">전체 MCP</Link>
                 </div>
               }
             />

@@ -1,4 +1,4 @@
-// 도구함(selection) 변경 신호. BFF 의 GET /api/toolbox/events (text/event-stream) 만 부른다 — Gateway 를 직접 부르지 않는다.
+// 내 MCP(selection) 변경 신호. BFF 의 GET /api/toolbox/events (text/event-stream) 만 부른다 — Gateway 를 직접 부르지 않는다.
 // 신호는 "다시 읽어라" 뿐이다. 받으면 기존 GET /api/toolbox 로 다시 읽는다.
 // 끊기면 1s → 2s → 5s(상한) 간격으로 다시 잇고, 다시 이어지면 onReconnect 로 한 번 다시 읽게 한다
 // (끊긴 동안 놓친 변경을 메운다). 실패를 화면에 띄우지 않는다.

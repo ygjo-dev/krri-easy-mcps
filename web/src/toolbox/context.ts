@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 import type { McpCard } from '../types/api'
 
 export interface ToolboxState {
-  // 도구함에 등록한 mcp_id. null = 아직 못 읽음 (불러오는 중이거나 실패)
+  // 내 MCP에 등록한 mcp_id. null = 아직 못 읽음 (불러오는 중이거나 실패)
   registered: Set<string> | null
   mcps: McpCard[]
   loadError: string | null

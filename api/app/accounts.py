@@ -1,4 +1,4 @@
-"""EASY 자체 계정 · 로그인 세션 · 계정 도구함 (SQLite, stdlib 만).
+"""EASY 자체 계정 · 로그인 세션 · 계정 내 MCP (SQLite, stdlib 만).
 
 **KRRI_ASAP 로그인(Keycloak/JWT)과 별개다.** Gateway 에 EASY 계정을 알리지 않고, Gateway 는 계속 브라우저의
 guest cookie(asap_mcp_guest) 로만 사용자를 구분한다. EASY 계정은 그 guest selection 을 계정에 저장 · 복원할 뿐이다
@@ -6,8 +6,8 @@ guest cookie(asap_mcp_guest) 로만 사용자를 구분한다. EASY 계정은 �
 
 표
     users             username · password_hash(scrypt + salt) · role(USER | ADMIN)
-    account_toolboxes 계정 도구함(mcp_id JSON 목록). **행이 없으면 아직 초기화 안 됨**, "[]" 이면 일부러 비운 도구함
-    sessions          token_hash(SHA-256) · user · 만료 시각 · 이 세션이 마지막으로 맞춘 guest(SHA-256) 와 도구함
+    account_toolboxes 계정 내 MCP(mcp_id JSON 목록). **행이 없으면 아직 초기화 안 됨**, "[]" 이면 일부러 비운 내 MCP
+    sessions          token_hash(SHA-256) · user · 만료 시각 · 이 세션이 마지막으로 맞춘 guest(SHA-256) 와 내 MCP
 
 세션 token 원문은 브라우저 cookie 에만 있다. DB 에는 hash 만 둔다. password · hash · token 은 JSON · 로그에 싣지 않는다.
 """
@@ -104,7 +104,7 @@ class User:
 
 @dataclass(frozen=True)
 class Login:
-    """로그인된 요청 한 건. synced_* 는 이 세션이 마지막으로 계정과 맞춘 guest(hash) · 도구함 (없으면 None)."""
+    """로그인된 요청 한 건. synced_* 는 이 세션이 마지막으로 계정과 맞춘 guest(hash) · 내 MCP (없으면 None)."""
 
     token_hash: str
     user: User
@@ -206,13 +206,13 @@ class AccountStore:
     # ── account toolbox ───────────────────────────────────
 
     def toolbox(self, user: User) -> list[str] | None:
-        """계정 도구함. None = 아직 한 번도 초기화 안 됨 ([] 은 일부러 비운 도구함)."""
+        """계정 내 MCP. None = 아직 한 번도 초기화 안 됨 ([] 은 일부러 비운 내 MCP)."""
         with self._db() as db:
             row = db.execute("SELECT mcp_ids FROM account_toolboxes WHERE user_id = ?", (user.id,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def save_toolbox(self, login: Login, guest: str | None, mcp_ids: list[str]) -> None:
-        """Gateway 가 실제로 반영한 도구함을 계정에 저장하고, 이 세션이 그 guest 와 맞췄다고 적는다 (한 transaction)."""
+        """Gateway 가 실제로 반영한 내 MCP을 계정에 저장하고, 이 세션이 그 guest 와 맞췄다고 적는다 (한 transaction)."""
         value = json.dumps(list(mcp_ids))
         with self._db() as db:
             db.execute(

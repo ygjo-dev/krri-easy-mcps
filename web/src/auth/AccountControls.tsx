@@ -77,7 +77,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
     >
       <form className="login-form" onSubmit={onSubmit}>
         <h2 id="login-title">로그인</h2>
-        <p className="login-note">KRRI EASY MCPs 계정입니다. 로그인하면 도구함이 계정에 저장됩니다.</p>
+        <p className="login-note">KRRI EASY MCPs 계정입니다. 로그인하면 내 MCP이 계정에 저장됩니다.</p>
         <label className="field">
           아이디
           <input

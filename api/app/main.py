@@ -31,7 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.gateway_mode, settings.gateway_base_url, settings.gateway_cache_seconds
     )
     app.state.selection = make_selection_client(settings.gateway_mode, settings.gateway_base_url)
-    # EASY 자체 계정 · 세션 · 계정 도구함. KRRI_ASAP 로그인과 별개다.
+    # EASY 자체 계정 · 세션 · 계정 내 MCP. KRRI_ASAP 로그인과 별개다.
     app.state.accounts = AccountStore(
         settings.db_path,
         session_seconds=settings.session_hours * 3600,

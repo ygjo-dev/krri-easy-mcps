@@ -8,8 +8,8 @@ export default function ToolboxPage() {
   return (
     <>
       <section className="page-head">
-        <h1>도구함</h1>
-        <p>AI 에서 사용할 MCP 를 모아 둔 곳입니다. MCP 탐색에서 추가하고, 여기서 해제할 수 있습니다.</p>
+        <h1>내 MCP</h1>
+        <p>AI 에서 사용할 MCP 를 모아 둔 곳입니다. 전체 MCP에서 추가하고, 여기서 해제할 수 있습니다.</p>
       </section>
 
       {loadError && (
@@ -18,12 +18,12 @@ export default function ToolboxPage() {
           <button type="button" className="pill pill-outline" onClick={reload}>다시 시도</button>
         </div>
       )}
-      {registered === null && !loadError && <div className="state-block muted">도구함을 불러오는 중…</div>}
+      {registered === null && !loadError && <div className="state-block muted">내 MCP을 불러오는 중…</div>}
       {registered !== null && mcps.length === 0 && (
         <div className="state-block">
-          <p>아직 도구함에 등록한 MCP 가 없습니다.</p>
-          <p className="muted">MCP 탐색에서 사용할 MCP 를 추가하세요.</p>
-          <Link to="/" className="pill pill-primary">MCP 탐색</Link>
+          <p>아직 내 MCP에 등록한 MCP 가 없습니다.</p>
+          <p className="muted">전체 MCP에서 사용할 MCP 를 추가하세요.</p>
+          <Link to="/" className="pill pill-primary">전체 MCP</Link>
         </div>
       )}
       {mcps.length > 0 && (

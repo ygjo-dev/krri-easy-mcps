@@ -1,4 +1,4 @@
-"""도구함 변경 신호: Browser → BFF GET /api/toolbox/events → Gateway GET /api/me/mcp-selections/events.
+"""내 MCP 변경 신호: Browser → BFF GET /api/toolbox/events → Gateway GET /api/me/mcp-selections/events.
 
 BFF 는 흐름을 guest cookie 로 열어 바이트 그대로 넘긴다. selection 을 해석 · 복제하지 않는다.
 Gateway 흐름은 httpx.MockTransport 로 흉내 낸다 (끝이 있는 흐름).

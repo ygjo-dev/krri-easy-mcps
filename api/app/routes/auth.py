@@ -3,7 +3,7 @@
 응답은 모두 ``{"user": null}`` 또는 ``{"user": {"username", "role"}}`` 다. password · hash · 세션 token 은 싣지 않는다.
 세션은 cookie ``kem_session`` (opaque token, HttpOnly · SameSite=Lax · Path=/ · https 면 Secure · 세션 수명만큼).
 Gateway guest cookie(asap_mcp_guest) 와 따로다. 로그인 · 로그아웃이 guest cookie 를 바꾸거나 지우지 않는다
-(로그인 때 guest 가 아직 없어 Gateway 가 새로 발급한 경우만 도구함 API 처럼 그 cookie 를 담는다).
+(로그인 때 guest 가 아직 없어 Gateway 가 새로 발급한 경우만 내 MCP API 처럼 그 cookie 를 담는다).
 """
 
 import logging
@@ -69,8 +69,8 @@ def _login(request: Request, username: str, password: str):
         SESSION_COOKIE, token, max_age=int(accounts.session_seconds), path=SESSION_COOKIE_PATH,
         httponly=True, samesite="lax", secure=request.url.scheme == "https",
     )
-    # 계정 도구함 ↔ 이 브라우저의 Gateway guest selection 을 바로 맞춘다. Gateway 가 실패해도 로그인은 성공이다 —
-    # 세션이 아직 이 guest 와 맞추지 않은 상태로 남아 다음 도구함 요청에서 다시 맞춘다.
+    # 계정 내 MCP ↔ 이 브라우저의 Gateway guest selection 을 바로 맞춘다. Gateway 가 실패해도 로그인은 성공이다 —
+    # 세션이 아직 이 guest 와 맞추지 않은 상태로 남아 다음 내 MCP 요청에서 다시 맞춘다.
     try:
         toolbox.sync_login(request, response, login)
     except GatewayUnavailable as exc:

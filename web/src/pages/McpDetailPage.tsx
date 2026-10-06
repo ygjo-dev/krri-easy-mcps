@@ -63,7 +63,7 @@ function McpDetailView({ mcpId }: { mcpId: string }) {
     return (
       <div className="state-block" role="alert">
         <p>{error.status === 404 ? 'MCP 를 찾을 수 없습니다.' : error.message}</p>
-        <Link to="/" className="pill pill-outline">MCP 탐색으로</Link>
+        <Link to="/" className="pill pill-outline">전체 MCP으로</Link>
       </div>
     )
   }
@@ -76,7 +76,7 @@ function McpDetailView({ mcpId }: { mcpId: string }) {
   return (
     <>
       <nav className="breadcrumb" aria-label="위치">
-        <Link to="/">MCP 탐색</Link>
+        <Link to="/">전체 MCP</Link>
         <span aria-hidden="true">›</span>
         <span aria-current="page">{mcp.display_name}</span>
       </nav>
@@ -88,7 +88,7 @@ function McpDetailView({ mcpId }: { mcpId: string }) {
             <div>
               <h1>{mcp.display_name}</h1>
               {developing ? (
-                <p className="stage-note">개발 중인 MCP 입니다. 공개되면 도구함에 등록할 수 있습니다.</p>
+                <p className="stage-note">개발 중인 MCP 입니다. 공개되면 내 MCP에 등록할 수 있습니다.</p>
               ) : (
                 <ToolboxButton mcpId={mcp.mcp_id} variant="detail" />
               )}

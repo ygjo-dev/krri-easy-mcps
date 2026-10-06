@@ -1,4 +1,4 @@
-"""KRRI_ASAP Gateway 쪽 boundary: logical MCP catalog · tools · status. (도구함 selection 은 selection.py)
+"""KRRI_ASAP Gateway 쪽 boundary: logical MCP catalog · tools · status. (내 MCP selection 은 selection.py)
 
 **Portal 의 MCP 하나 = Gateway market tool-group 하나.** 사용자에게 보이는 단위는 physical MCP server 가
 아니라 Gateway ``ASAP-Gateway/data/tool-groups.json`` 이 정의한 logical group 이고, group id 가 곧 Portal
