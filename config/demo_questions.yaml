@@ -1,44 +1,231 @@
-# 「AI로 사용해보기」 고정 질문.
+# MCP 상세 「AI에게 이렇게 물어보세요」 예제 질문 (= 「AI로 사용해보기」 고정 질문). 이 파일 하나가 source of truth 다.
 #
 # 실행 contract 가 아니다. 실행 시 BFF 는 display_text 만 agentic_ai 기존
-# POST /chat/stream 에 발화로 보낸다. Resolve 는 agentic_ai 가 한다.
+# POST /chat/stream 에 발화로 보낸다 (context 없음). Resolve 는 agentic_ai 가 한다.
 #
-#   mcp_id              이 질문을 대화 예시로 보여 줄 logical MCP (상세 화면 하나). 개발 중 MCP 는 안 된다
-#   expected_recipe_id  resolve 가 이 recipe 를 골랐는지 검증·설명하기 위한 값
+#   mcp_id              이 질문을 보여 줄 logical MCP (상세 화면 하나). 개발 중 MCP 는 안 된다
+#   expected_recipe_id  resolve 가 이 recipe 를 골랐는지 검증·설명하기 위한 값.
+#                       **없으면 「예시」만이다**: agentic_ai 에 이 MCP 를 쓰는 recipe 가 아직 없어서 EASY 의
+#                       「AI로 사용해보기」로 실행하지 않는다 (화면은 실행 버튼 없이 보이고 execute 는 409)
 #   expected_mcp_ids    실행이 거칠 것으로 예상하는 logical MCP. mcp_id 를 포함한다.
 #                       한 recipe 가 여러 MCP 의 Tool 을 쓸 수 있다 (부산역 = 위치 + 행정구역)
-#   expected_tools      실행이 이 tool 들을 이 순서로 거쳤는지 검증·설명하기 위한 값 (server_id/tool)
+#   expected_tools      이 질문이 대표하는 Tool (server_id/tool, 호출 순서대로). 실행 질문은 검증·설명용,
+#                       예시는 「이 질문이 부르게 될 Tool」 기록이다
 #
-# 발화와 expected_recipe_id 는 agentic_ai 평가 정답표
-# dev/evaluation/inputs/test_suites/test_suite_v1.yaml 의 case 를 그대로 옮겼다
-# (2026-09-22, HEAD 3dffdcb). expected_tools 는 해당 recipe 의 execution.workflow 에서 읽었다.
+# 고르는 규칙 (2026-10-02)
+#   - 화면 기본 예제는 그 MCP 의 대표 Tool 하나를 부르는 질문이다. 장소 이름을 좌표로 받는 Tool
+#     (CCTV · 좌표의 행정구역 · 도달권 …)은 지도/위치 검색 geo.geocode 를 앞에 한 번 거친다 — 장소를 말로 할 때의 도우미다.
+#   - 여러 MCP 를 함께 쓰는 recipe(철도 구간+CCTV, 행정구역+인구 연령·추이)의 질문은 기본 예제로 쓰지 않았다.
+#   - 지도 문맥(찍은 지점 · 보이는 범위)이 있어야 닿는 평가 질문은 쓰지 않았다 (EASY 데모는 context 를 보내지 않는다).
+#   - 쓰기 Tool(knowledge.deleteDoc · bim.updateModel · bim.deleteModel)을 부르는 질문은 만들지 않는다.
+#
+# 출처 (case 번호는 agentic_ai dev/evaluation/inputs/test_suites/ 의 정답표)
+#   v1 #n   test_suite_v1.yaml case n 의 발화를 그대로 옮겼다. 공식 기준 run 20260922-163007 에서 48/48 통과
+#   v2 #n   test_suite_v2.yaml case n 의 발화를 그대로 옮겼다. 공식 기준 run 20260922-163313 에서 그 case 통과
+#   새로     agentic_ai 에 맞는 recipe 가 없어 KRRI_ASAP Gateway 의 Tool 설명 · inputSchema(2026-10-02 live)를 보고 새로 썼다
+# expected_tools 는 해당 recipe 의 execution.workflow 에서 읽었다 (KRRI_Ontology_Registry/recipes, agentic_ai 8247eff).
 # expected_* 는 브라우저로 내보내지 않는다. expected_mcp_ids 는 실행 단계의 Tool 옆에 MCP 이름을 붙이는 데만 쓴다.
 questions:
-  - question_id: iksan-station-location     # suite v1 case 1
+  # ── 지도/위치 검색 ──
+  - question_id: iksan-station-location     # v1 #1
     mcp_id: krri-map-location
     display_text: 익산역 위치 보여줘
     expected_recipe_id: recipe_001
     expected_mcp_ids: [krri-map-location]
     expected_tools: [asap-mcp-core/geo.geocode]
     enabled: true
-  - question_id: cheonan-station-lines      # suite v1 case 3
+  # v2 #5 「국립중앙박물관 좌표만 줘」는 2026-10-02 실행에서 다른 곳(춘천) 좌표가 나와 빼고 v2 #3 으로 바꿨다
+  - question_id: cheongju-airport-location  # v2 #3
+    mcp_id: krri-map-location
+    display_text: 청주국제공항 위치만 짚어줘
+    expected_recipe_id: recipe_001
+    expected_mcp_ids: [krri-map-location]
+    expected_tools: [asap-mcp-core/geo.geocode]
+    enabled: true
+
+  # ── 철도망/노선 조회 ──
+  - question_id: cheonan-station-lines      # v1 #3
     mcp_id: krri-railway-network
     display_text: 천안역에 무슨 노선 다녀
     expected_recipe_id: recipe_003
     expected_mcp_ids: [krri-railway-network]
     expected_tools: [asap-mcp-core/geo.getRailwayLines]
     enabled: true
-  - question_id: busan-station-district     # suite v1 case 13
+  - question_id: gyeongbu-line-section      # v1 #2
+    mcp_id: krri-railway-network
+    display_text: 경부선 위치 보여줘
+    expected_recipe_id: recipe_002
+    expected_mcp_ids: [krri-railway-network]
+    expected_tools: [asap-mcp-core/rail.getSectionGeometry]
+    enabled: true
+  - question_id: chungbuk-line-stations     # v2 #15
+    mcp_id: krri-railway-network
+    display_text: 충북선에 어떤 역들이 있는지 노선이랑 같이 알려줘
+    expected_recipe_id: recipe_003
+    expected_mcp_ids: [krri-railway-network]
+    expected_tools: [asap-mcp-core/geo.getRailwayLines]
+    enabled: true
+
+  # ── 행정구역 경계 조회 ──
+  - question_id: nonsan-boundary            # v1 #5
+    mcp_id: krri-admin-boundary
+    display_text: 논산 행정경계 보여줘
+    expected_recipe_id: recipe_005
+    expected_mcp_ids: [krri-admin-boundary]
+    expected_tools: [asap-mcp-core/adminBoundary.searchBoundaries]
+    enabled: true
+  - question_id: busan-station-district     # v1 #13
     mcp_id: krri-admin-boundary
     display_text: 부산역이 무슨 구에 있어
     expected_recipe_id: recipe_034
     expected_mcp_ids: [krri-map-location, krri-admin-boundary]
     expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/adminBoundary.findBoundaryByPoint]
     enabled: true
-  - question_id: suwon-station-cctv         # suite v1 case 14
+
+  # ── VWorld 대표 공간데이터 (agentic recipe 없음 → 예시) ──
+  - question_id: vworld-osong-boundary      # 새로: getAdministrativeBoundaries(layer=emd, query=오송읍)
+    mcp_id: krri-vworld-representative-data
+    display_text: VWorld 행정구역 데이터에서 오송읍 경계를 찾아줘
+    expected_mcp_ids: [krri-vworld-representative-data]
+    expected_tools: [asap-mcp-core/vworld.getAdministrativeBoundaries]
+    enabled: true
+  - question_id: vworld-datasets            # 새로: getDatasetInfo (입력 없음)
+    mcp_id: krri-vworld-representative-data
+    display_text: VWorld 대표 공간데이터로 조회할 수 있는 행정구역 데이터 종류를 알려줘
+    expected_mcp_ids: [krri-vworld-representative-data]
+    expected_tools: [asap-mcp-core/vworld.getDatasetInfo]
+    enabled: true
+
+  # ── 주민등록 인구 통계 ──
+  - question_id: cheongju-population        # v1 #8
+    mcp_id: krri-population-statistics
+    display_text: 청주시 인구 몇 명이야
+    expected_recipe_id: recipe_012
+    expected_mcp_ids: [krri-population-statistics]
+    expected_tools: [asap-mcp-core/population.searchStatistics]
+    enabled: true
+  # v2 #38 「충청남도 안에서 인구 많은 순서로…」 · v2 #36 (강원특별자치도) · v2 #39 (대전 유성구)는 2026-10-02 실행에서
+  # population.searchStatistics 가 0건이라 넣지 않았다. 시 단위(청주시)만 값이 나온다. 같은 뜻의 다른 시 질문은 더하지 않는다.
+
+  # ── 도로/CCTV 조회 ── (Tool 이 road.getCctv 하나라 질문도 하나)
+  - question_id: suwon-station-cctv         # v1 #14
     mcp_id: krri-road-cctv
     display_text: 수원역 근처 CCTV 띄워줘
     expected_recipe_id: recipe_036
     expected_mcp_ids: [krri-map-location, krri-road-cctv]
     expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/road.getCctv]
+    enabled: true
+
+  # ── 전기차 충전소 조회 ──
+  - question_id: tanbang-ev-status          # v1 #20
+    mcp_id: krri-ev-chargers
+    display_text: 탄방동 충전소 비었는지 알려줘
+    expected_recipe_id: recipe_052
+    expected_mcp_ids: [krri-ev-chargers]
+    expected_tools: [asap-mcp-core/ev.searchStations, asap-mcp-core/ev.getStation]
+    enabled: true
+  - question_id: songjeong-station-ev       # v1 #23
+    mcp_id: krri-ev-chargers
+    display_text: 광주송정역 근처 충전소 충전기 비었는지 알려줘
+    expected_recipe_id: recipe_060
+    expected_mcp_ids: [krri-map-location, krri-ev-chargers]
+    expected_tools: [asap-mcp-core/geo.geocode, asap-mcp-core/ev.searchStations, asap-mcp-core/ev.getStation]
+    enabled: true
+
+  # ── 지식문서 검색/관리 ──
+  - question_id: railway-safety-act-docs    # v1 #9
+    mcp_id: krri-knowledge
+    display_text: 문서에서 철도안전법 관련 내용 찾아줘
+    expected_recipe_id: recipe_014
+    expected_mcp_ids: [krri-knowledge]
+    expected_tools: [asap-mcp-core/knowledge.query]
+    enabled: true
+  - question_id: knowledge-doc-list         # 새로: listDocs (입력 없음, recipe 없음 → 예시)
+    mcp_id: krri-knowledge
+    display_text: 지식베이스에 저장된 문서 목록을 보여줘
+    expected_mcp_ids: [krri-knowledge]
+    expected_tools: [asap-mcp-core/knowledge.listDocs]
+    enabled: true
+
+  # ── BIM/3D 모델 (agentic recipe 없음 → 예시, 읽기 Tool 은 listModels 하나) ──
+  - question_id: bim-model-list             # 새로: listModels (입력 없음)
+    mcp_id: krri-bim-viewer
+    display_text: 업로드된 3D 모델과 타일셋 목록을 보여줘
+    expected_mcp_ids: [krri-bim-viewer]
+    expected_tools: [asap-mcp-core/bim.listModels]
+    enabled: true
+
+  # ── DEM/지형 정보 (agentic recipe 없음 → 예시, Tool 이 getInfo 하나) ──
+  - question_id: dem-coverage               # 새로: getInfo (입력 없음)
+    mcp_id: krri-dem
+    display_text: 수치표고모델(DEM) 데이터가 어느 범위와 줌 레벨까지 있는지 알려줘
+    expected_mcp_ids: [krri-dem]
+    expected_tools: [asap-mcp-core/dem.getInfo]
+    enabled: true
+
+  # ── 22대 국회의원 선거구 공약 ──
+  - question_id: daegu-districts            # v1 #6
+    mcp_id: krri-assembly-pledges-2024
+    display_text: 대구 선거구들 알려줘
+    expected_recipe_id: recipe_008
+    expected_mcp_ids: [krri-assembly-pledges-2024]
+    expected_tools: [asap-mcp-core/election.searchDistricts]
+    enabled: true
+  - question_id: railway-pledge-members     # v1 #7
+    mcp_id: krri-assembly-pledges-2024
+    display_text: 철도 공약 낸 의원 찾아줘
+    expected_recipe_id: recipe_010
+    expected_mcp_ids: [krri-assembly-pledges-2024]
+    expected_tools: [asap-mcp-core/election.searchAssemblyPledgeDistricts]
+    enabled: true
+  - question_id: heungdeok-winner-pledges   # v1 #11
+    mcp_id: krri-assembly-pledges-2024
+    display_text: 청주시 흥덕구 당선인이랑 공약까지 같이 보여줘
+    expected_recipe_id: recipe_016
+    expected_mcp_ids: [krri-assembly-pledges-2024]
+    expected_tools: [asap-mcp-core/election.getAssemblyDistrict]
+    enabled: true
+
+  # ── 2026 지방선거 시도별 공약 요약 (agentic recipe 없음 → 예시) ──
+  - question_id: seoul-local-pledges-2026   # 새로: getLocalPledgeSummary(sidoName=서울특별시)
+    mcp_id: krri-election-pledges-2026
+    display_text: 2026 지방선거 서울특별시 교통 공약 요약 보여줘
+    expected_mcp_ids: [krri-election-pledges-2026]
+    expected_tools: [asap-mcp-core/election.getLocalPledgeSummary]
+    enabled: true
+  - question_id: railway-local-pledges-2026 # 새로: searchLocalPledgeSummaries(query=철도)
+    mcp_id: krri-election-pledges-2026
+    display_text: 2026 지방선거에서 철도 관련 교통 공약을 낸 시도를 찾아줘
+    expected_mcp_ids: [krri-election-pledges-2026]
+    expected_tools: [asap-mcp-core/election.searchLocalPledgeSummaries]
+    enabled: true
+
+  # ── Web Search MCP (agentic recipe 없음 → 예시) ──
+  - question_id: web-rail-policy-news       # 새로: web.search(query)
+    mcp_id: web-research
+    display_text: 고속철도 관련 최신 정책 뉴스를 웹에서 검색해줘
+    expected_mcp_ids: [web-research]
+    expected_tools: [web-search/web.search]
+    enabled: true
+  - question_id: web-fetch-krri-home        # 새로: web.fetch(url)
+    mcp_id: web-research
+    display_text: https://www.krri.re.kr 페이지 본문을 가져와서 요약해줘
+    expected_mcp_ids: [web-research]
+    expected_tools: [web-search/web.fetch]
+    enabled: true
+
+  # ── R5 기반 등시선도 ──
+  - question_id: uiwang-walk-30             # v1 #24
+    mcp_id: route-accessibility
+    display_text: 의왕역에서 걸어서 30분이면 어디까지 갈 수 있어
+    expected_recipe_id: recipe_061
+    expected_mcp_ids: [krri-map-location, route-accessibility]
+    expected_tools: [asap-mcp-core/geo.geocode, r5-server/compute_isochrone]
+    enabled: true
+  - question_id: uiwang-bike-cutoffs        # v1 #26
+    mcp_id: route-accessibility
+    display_text: 의왕역에서 자전거로 15분, 30분, 60분 도달권 보여줘
+    expected_recipe_id: recipe_061
+    expected_mcp_ids: [krri-map-location, route-accessibility]
+    expected_tools: [asap-mcp-core/geo.geocode, r5-server/compute_isochrone]
     enabled: true

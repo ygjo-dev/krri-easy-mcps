@@ -184,20 +184,24 @@ function McpDetailView({ mcpId }: { mcpId: string }) {
                     <dd>{checkedAt}</dd>
                   </>
                 )}
-                <dt>대화 예시</dt>
+                <dt>AI에게 이렇게 물어보세요</dt>
                 <dd>
                   {demo.questions && demo.questions.length > 0 ? (
                     <ol className="examples">
                       {demo.questions.map((q) => (
                         <li key={q.question_id}>
-                          <button type="button" className="link-button" onClick={() => demo.run(q)} disabled={demo.running}>
-                            {q.display_text}
-                          </button>
+                          {q.runnable ? (
+                            <button type="button" className="link-button" onClick={() => demo.run(q)} disabled={demo.running}>
+                              {q.display_text}
+                            </button>
+                          ) : (
+                            <span>{q.display_text} <span className="muted">(예시 · EASY 실행 전)</span></span>
+                          )}
                         </li>
                       ))}
                     </ol>
                   ) : (
-                    <span className="muted">{demo.questions ? '준비된 대화 예시가 없습니다.' : '불러오는 중…'}</span>
+                    <span className="muted">{demo.questions ? '준비된 질문이 없습니다.' : '불러오는 중…'}</span>
                   )}
                 </dd>
               </dl>

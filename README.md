@@ -29,7 +29,7 @@ krri-easy-mcps/
 ├── config/
 │   ├── presentation.yaml    Portal 전용 표시 정보 (mcp_id = Gateway group id 기준)
 │   ├── planned_mcps.yaml    개발 중 MCP (Gateway 에 아직 없음. 「개발 중」 카드만)
-│   └── demo_questions.yaml  「AI로 사용해보기」 고정 질문
+│   └── demo_questions.yaml  MCP 상세 「AI에게 이렇게 물어보세요」 질문 (실행 질문 · 예시, 출처 주석)
 └── docs/
     └── integration-boundary.md
 ```
@@ -95,7 +95,8 @@ AI로 사용해보기를 실제 agentic_ai 로 실행하려면 `KEM_AGENTIC_AI_M
 로그인 · 로그아웃은 페이지를 새로 읽지 않고 도구함만 다시 읽는다.
 
 화면 구성은 Kakao PlayMCP 의 정보 구조(카드 · 상세 · 도구함 · AI 채팅 panel)를 따른다. Kakao 로고 · 이미지는 쓰지 않고,
-MCP 아이콘은 모노그램이다. AI로 사용해보기는 준비된 대화 예시만 실행한다(자유 입력 없음). live 에서는 tool 단위
+MCP 아이콘은 모노그램이다. 모든 logical MCP 상세에 「AI에게 이렇게 물어보세요」 질문이 있다. AI로 사용해보기는 그중 실행 질문만 실행하고
+(자유 입력 없음), agentic_ai 에 기능이 아직 없는 MCP 의 질문은 「예시」로만 보인다. live 에서는 tool 단위
 Request/Response 를 보여 주지 않는다 (기존 `/chat/stream` 이벤트에 없다).
 
 **MCP 하나 = logical MCP.** 화면의 단위는 physical MCP server 가 아니라 KRRI_ASAP Gateway `tool-groups.json` 의
@@ -125,8 +126,8 @@ Catalog 카드에도 「도구함에 등록」/「등록됨」이 있다. **도�
 | GET | `/api/skills/{id}/download?target=chatgpt\|claude\|source` | ZIP 내려받기 |
 | GET | `/api/mcps` | catalog 카드 `{mcp_id, display_name, summary, category, organization, lifecycle, status, tool_count, source}`. 개발 중은 `lifecycle: "development"`, `status` · `tool_count` 가 null |
 | GET | `/api/mcps/{mcp_id}` | 상세: 카드 + Gateway group 의 `long_description` · `tags` · `connected_datasets[{name, description, geometry_kind}]` · `updated_at`(상태 확인 시각) + Tool/parameter. 개발 중은 빈 값 |
-| GET | `/api/mcps/{mcp_id}/demo-questions` | 고정 질문 `{question_id, display_text}` 만 |
-| POST | `/api/demo/questions/{question_id}/execute` | 고정 질문 실행 → trace(단계마다 `mcp_name`) + 최종 답변 |
+| GET | `/api/mcps/{mcp_id}/demo-questions` | 질문 `{question_id, display_text, runnable}` 만 |
+| POST | `/api/demo/questions/{question_id}/execute` | 실행 질문 실행 → trace(단계마다 `mcp_name`) + 최종 답변. 예시 질문은 409 |
 | GET | `/api/toolbox` | 내 도구함 `{mcp_ids, mcps: [catalog 카드]}` |
 | POST | `/api/toolbox/{mcp_id}` | 도구함에 등록 (이미 있으면 그대로) → 도구함. 개발 중은 409 |
 | DELETE | `/api/toolbox/{mcp_id}` | 도구함에서 해제 (없으면 그대로) → 도구함. 개발 중은 409 |

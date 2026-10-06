@@ -41,6 +41,14 @@ class DemoQuestion:
     expected_tools: tuple[str, ...]
     enabled: bool
 
+    @property
+    def runnable(self) -> bool:
+        """EASY 「AI로 사용해보기」(agentic_ai /chat/stream)로 실행할 수 있는 질문인가.
+
+        agentic_ai 에 이 기능의 recipe 가 있을 때만 그렇다 (expected_recipe_id). 없으면 화면에 예시로만 보인다.
+        """
+        return self.expected_recipe_id is not None
+
 
 def _read(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:

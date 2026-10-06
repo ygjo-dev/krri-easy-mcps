@@ -57,6 +57,8 @@ export interface McpDetail extends McpCard {
 export interface DemoQuestion {
   question_id: string
   display_text: string
+  // EASY 「AI로 사용해보기」(agentic_ai)로 실행할 수 있는가. false 면 AI 에게 물어볼 때 참고할 예시만이다
+  runnable: boolean
 }
 
 export interface ExecutionStep {

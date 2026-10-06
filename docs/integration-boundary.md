@@ -162,6 +162,15 @@ route-accessibility = `교통 접근성 분석`).
 | `mcp_id` | 이 질문을 대화 예시로 보여 줄 MCP 하나 (상세 화면) |
 | `expected_mcp_ids` | 실행이 거칠 것으로 예상하는 MCP. `mcp_id` 를 포함한다 |
 | `expected_tools` | 실행이 거칠 것으로 예상하는 physical Tool (`<server_id>/<tool>`, 순서대로). trace 검증용 |
+| `expected_recipe_id` | resolve 가 고를 recipe. **없으면 예시만**: agentic_ai 에 그 MCP 를 쓰는 recipe 가 없어 「AI로 사용해보기」로 실행하지 않는다 (API `runnable: false`, execute 409) |
+
+**예제 coverage (2026-10-02).** Gateway catalog 의 logical MCP 14개가 모두 「AI에게 이렇게 물어보세요」 질문을 1~3개 갖는다 (26개).
+실행 질문 17개는 agentic_ai 평가 정답표(test_suite_v1 · v2)의 발화를 그대로 옮겼고, 지금 실행 경로(BFF → `/chat/stream` → KRRI)로
+17/17 이 기대 recipe · Tool 로 끝났다. agentic_ai 에 recipe 가 없는 MCP 5개(VWorld · BIM · DEM · 2026 지방선거 공약 · Web Search)의
+9개는 Tool 설명 · inputSchema 를 보고 새로 쓴 예시다. 출처 · 고른 규칙 · 뺀 질문은 `config/demo_questions.yaml` 머리말과 줄 주석에 있다.
+`api/tests/test_demo_coverage.py` 가 실제 catalog snapshot(`tests/fixtures/gateway_catalog_20261002.json`)으로 「모든 logical MCP 에 질문이 있다 ·
+대표 Tool 이 지금 catalog 에 있고 그 MCP 소속이다 · 쓰기 Tool 을 부르지 않는다」를 본다 (`KEM_LIVE_GATEWAY_URL` 을 주면 live Gateway 로도).
+개발 중 MCP 는 Tool 이 없어 예외다 (loader 가 그런 질문을 거부한다).
 
 실행 결과의 `steps[].mcp_name` 은 그 단계 Tool 을 가진 MCP 이름이다. 후보는 `expected_mcp_ids` 뿐이고 소속은 Gateway group Tool 로
 판단한다. 하나로 정해지지 않거나 Gateway 를 못 읽으면 `null` 이고, 실행 결과 자체는 그대로 돌려준다.

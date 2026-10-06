@@ -314,6 +314,9 @@ main.container { min-height: calc(100vh - var(--header-h) - 88px); padding-botto
 }
 .ai-questions button:hover:not(:disabled) { background: #e2e2e6; }
 .ai-questions button[aria-pressed='true'] { box-shadow: inset 0 0 0 1.5px #2f6fed; }
+.ai-question-example { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 0; padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--panel-line); font-size: 14px; color: var(--panel-text); overflow-wrap: anywhere; }
+.ai-question-example small { flex: none; padding: 1px 8px; border-radius: 999px; background: var(--panel-chip); color: var(--panel-muted); font-size: 11px; }
+.examples li { overflow-wrap: anywhere; }
 .ai-questions button:disabled { opacity: 0.55; }
 
 /* ── KRRI AI Skills (ADMIN) ─────────────────────────── */

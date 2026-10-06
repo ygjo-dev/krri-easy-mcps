@@ -134,6 +134,37 @@ _MOCK_REPLIES: dict[str, ChatStreamReply] = {
     ),
 }
 
+
+# 「AI에게 이렇게 물어보세요」 예제(config/demo_questions.yaml)의 나머지 실행 질문. node · tool 은 recipe workflow 그대로,
+# 답 문구는 예시값이다 (tool_io 없음 — live 와 같다).
+_GEOCODE = ("geocode_place", "geo.geocode")
+for _text, _recipe, _steps, _answer in [
+    ("청주국제공항 위치만 짚어줘", "recipe_001", [_GEOCODE], "청주국제공항의 위치를 지도에 표시했습니다."),
+    ("경부선 위치 보여줘", "recipe_002", [("get_railway_section", "rail.getSectionGeometry")], "경부선 구간을 지도에 표시했습니다."),
+    ("충북선에 어떤 역들이 있는지 노선이랑 같이 알려줘", "recipe_003", [("get_railway_lines", "geo.getRailwayLines")],
+     "충북선 노선과 역을 지도에 표시했습니다."),
+    ("논산 행정경계 보여줘", "recipe_005", [("search_admin_boundaries", "adminBoundary.searchBoundaries")],
+     "논산시 행정경계를 지도에 표시했습니다."),
+    ("청주시 인구 몇 명이야", "recipe_012", [("search_population_statistics", "population.searchStatistics")],
+     "청주시 주민등록 인구를 조회했습니다."),
+    ("탄방동 충전소 비었는지 알려줘", "recipe_052",
+     [("search_ev_stations", "ev.searchStations"), ("get_ev_station", "ev.getStation")], "탄방동 충전소의 충전기 상태를 조회했습니다."),
+    ("광주송정역 근처 충전소 충전기 비었는지 알려줘", "recipe_060",
+     [_GEOCODE, ("search_ev_stations", "ev.searchStations"), ("get_ev_station", "ev.getStation")],
+     "광주송정역 근처 충전소의 충전기 상태를 조회했습니다."),
+    ("문서에서 철도안전법 관련 내용 찾아줘", "recipe_014", [("search_documents", "knowledge.query")], "철도안전법 관련 문서 내용을 찾았습니다."),
+    ("대구 선거구들 알려줘", "recipe_008", [("search_election_districts", "election.searchDistricts")], "대구 선거구를 지도에 표시했습니다."),
+    ("철도 공약 낸 의원 찾아줘", "recipe_010", [("search_assembly_pledge_districts", "election.searchAssemblyPledgeDistricts")],
+     "철도 공약을 낸 의원의 선거구를 찾았습니다."),
+    ("청주시 흥덕구 당선인이랑 공약까지 같이 보여줘", "recipe_016", [("get_assembly_district", "election.getAssemblyDistrict")],
+     "청주시 흥덕구 선거구의 당선인과 공약을 조회했습니다."),
+    ("의왕역에서 걸어서 30분이면 어디까지 갈 수 있어", "recipe_061", [_GEOCODE, ("compute_isochrone", "compute_isochrone")],
+     "의왕역에서 도보 30분 도달권을 지도에 표시했습니다."),
+    ("의왕역에서 자전거로 15분, 30분, 60분 도달권 보여줘", "recipe_061", [_GEOCODE, ("compute_isochrone", "compute_isochrone")],
+     "의왕역에서 자전거 15 · 30 · 60분 도달권을 지도에 표시했습니다."),
+]:
+    _MOCK_REPLIES[_text] = ChatStreamReply(events=_events(_recipe, _steps, _answer, [{"op": "map.addLayer", "args": {}}]))
+
 _MOCK_NO_MATCH = ChatStreamReply(
     events=[
         {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."},

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,28 +119,28 @@ def test_detail_unknown_mcp_404(client):
 
 def test_demo_questions_belong_to_one_logical_mcp_each(client):
     owners = {
-        "krri-map-location": ["iksan-station-location"],
-        "krri-railway-network": ["cheonan-station-lines"],
-        "krri-admin-boundary": ["busan-station-district"],
+        "krri-map-location": ["iksan-station-location", "cheongju-airport-location"],
+        "krri-railway-network": ["cheonan-station-lines", "gyeongbu-line-section", "chungbuk-line-stations"],
+        "krri-admin-boundary": ["nonsan-boundary", "busan-station-district"],
         "krri-road-cctv": ["suwon-station-cctv"],
+        "web-research": ["web-rail-policy-news", "web-fetch-krri-home"],
     }
     for mcp_id, expected in owners.items():
         questions = client.get(f"/api/mcps/{mcp_id}/demo-questions").json()
         assert [q["question_id"] for q in questions] == expected
         for q in questions:
-            assert set(q) == {"question_id", "display_text"}
-    assert client.get("/api/mcps/web-research/demo-questions").json() == []
+            assert set(q) == {"question_id", "display_text", "runnable"}
+    # agentic_ai 에 recipe 가 없는 MCP 의 질문은 예시다
+    assert {q["runnable"] for q in client.get("/api/mcps/web-research/demo-questions").json()} == {False}
+    assert {q["runnable"] for q in client.get("/api/mcps/krri-road-cctv/demo-questions").json()} == {True}
 
 
 def test_question_expectations_match_gateway_groups(client):
-    """expected_mcp_ids 는 expected_tools 를 가진 group 과 같아야 한다 (Gateway 소속 기준, mock fixture)."""
-    mcps = client.app.state.gateway.list_mcps()
+    """expected_mcp_ids 는 expected_tools 를 가진 group 과 같아야 한다 (실제 Gateway catalog snapshot 기준)."""
+    snapshot = json.loads((Path(__file__).parent / "fixtures" / "gateway_catalog_20261002.json").read_text())
     for q in client.app.state.demo_questions.values():
-        owners = set()
-        for ref in q.expected_tools:
-            server_id, tool = ref.split("/", 1)
-            owners |= {m["mcp_id"] for m in mcps if any(t["server_id"] == server_id and t["name"] == tool for t in m["tools"])}
-        assert owners == set(q.expected_mcp_ids), q.question_id
+        owners = {m["mcp_id"] for ref in q.expected_tools for m in snapshot["mcps"] if ref in m["tools"]}
+        assert q.expected_tools and owners == set(q.expected_mcp_ids), q.question_id
 
 
 def test_disabled_question_hidden_and_not_executable(tmp_path, monkeypatch):
@@ -173,10 +174,20 @@ def test_execute_mock_returns_trace_and_answer(client):
 
 
 def test_every_enabled_question_resolves_as_expected(client):
-    for q in client.app.state.demo_questions.values():
+    runnable = [q for q in client.app.state.demo_questions.values() if q.runnable]
+    assert len(runnable) >= 14
+    for q in runnable:
         body = client.post(f"/api/demo/questions/{q.question_id}/execute").json()
         assert body["matches_expected_recipe"] is True, q
         assert body["matches_expected_tools"] is True, q
+
+
+def test_example_only_questions_are_not_executed(client):
+    examples = [q for q in client.app.state.demo_questions.values() if not q.runnable]
+    assert examples
+    for q in examples:
+        r = client.post(f"/api/demo/questions/{q.question_id}/execute")
+        assert r.status_code == 409 and "예시" in r.json()["detail"], q.question_id
 
 
 def test_execute_response_has_no_trusted_metadata_or_commands(client):

@@ -2,12 +2,13 @@ import { useState } from 'react'
 import type { DemoRun } from '../demo/useDemoRun'
 import { ChevronIcon } from './Icons'
 
-// PlayMCP AI 채팅 panel 의 배치를 따른다: 머리 · 대화(질문 말풍선 → TOOL 호출 → 답) · 아래 「대화 예시」.
-// 자유 입력창은 두지 않는다. 준비된 질문만 실행한다.
+// PlayMCP AI 채팅 panel 의 배치를 따른다: 머리 · 대화(질문 말풍선 → TOOL 호출 → 답) · 아래 「AI에게 이렇게 물어보세요」.
+// 자유 입력창은 두지 않는다. 준비된 질문만 실행한다. runnable 이 아닌 질문(agentic_ai 에 이 기능이 아직 없음)은 예시로만 보인다.
 export default function AiPanel({ demo }: { demo: DemoRun }) {
   const [toolsOpen, setToolsOpen] = useState(true)
   const [examplesOpen, setExamplesOpen] = useState(true)
   const { questions, questionsError, asked, running, result, error, run, reset } = demo
+  const canRun = (questions ?? []).some((q) => q.runnable)
 
   return (
     <aside className="ai-panel" aria-label="AI로 사용해보기">
@@ -21,7 +22,11 @@ export default function AiPanel({ demo }: { demo: DemoRun }) {
       <div className="ai-body" aria-live="polite">
         {!asked && (
           <div className="ai-intro">
-            <p>아래 대화 예시를 누르면 AI 가 이 MCP 의 Tool 을 어떻게 쓰는지 볼 수 있습니다.</p>
+            {questions && questions.length > 0 && !canRun ? (
+              <p>이 MCP 는 아직 EASY 에서 AI 로 실행해 볼 수 없습니다. 아래 질문은 AI 에게 물어볼 때 참고할 예시입니다.</p>
+            ) : (
+              <p>아래 질문을 누르면 AI 가 이 MCP 의 Tool 을 어떻게 쓰는지 볼 수 있습니다.</p>
+            )}
           </div>
         )}
         {asked && <p className="bubble-user">{asked.display_text}</p>}
@@ -62,26 +67,33 @@ export default function AiPanel({ demo }: { demo: DemoRun }) {
 
       <footer className="ai-examples">
         <button type="button" className="ai-examples-toggle" aria-expanded={examplesOpen} onClick={() => setExamplesOpen((v) => !v)}>
-          대화 예시
+          AI에게 이렇게 물어보세요
           <ChevronIcon />
         </button>
         {examplesOpen && (
           <>
             {questionsError && <p className="ai-error">{questionsError}</p>}
             {!questions && !questionsError && <p className="ai-muted">불러오는 중…</p>}
-            {questions && questions.length === 0 && <p className="ai-muted">이 MCP 에는 준비된 대화 예시가 아직 없습니다.</p>}
+            {questions && questions.length === 0 && <p className="ai-muted">이 MCP 에는 준비된 질문이 아직 없습니다.</p>}
             {questions && questions.length > 0 && (
               <ul className="ai-questions">
                 {questions.map((q) => (
                   <li key={q.question_id}>
-                    <button
-                      type="button"
-                      onClick={() => run(q)}
-                      disabled={running}
-                      aria-pressed={asked?.question_id === q.question_id}
-                    >
-                      {q.display_text}
-                    </button>
+                    {q.runnable ? (
+                      <button
+                        type="button"
+                        onClick={() => run(q)}
+                        disabled={running}
+                        aria-pressed={asked?.question_id === q.question_id}
+                      >
+                        {q.display_text}
+                      </button>
+                    ) : (
+                      <p className="ai-question-example">
+                        <span>{q.display_text}</span>
+                        <small>예시</small>
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
