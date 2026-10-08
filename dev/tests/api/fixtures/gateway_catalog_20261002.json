@@ -1,0 +1,150 @@
+{
+ "_comment": "KRRI_ASAP Gateway logical MCP catalog snapshot (GET /api/tools + /api/mcp-market → app.api.integrations.krri_asap.gateway_client.normalize_gateway_catalog), 2026-10-02 live 127.0.0.1:3000. 예제 질문 coverage test 용. physical server id 는 tools 의 'server/tool' ref 안에만 있다 (브라우저로 나가지 않는다).",
+ "mcps": [
+  {
+   "mcp_id": "krri-map-location",
+   "name": "지도/위치 검색",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/geo.geocode"
+   ]
+  },
+  {
+   "mcp_id": "krri-railway-network",
+   "name": "철도망/노선 조회",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/rail.getSectionGeometry",
+    "asap-mcp-core/geo.getRailwayLines"
+   ]
+  },
+  {
+   "mcp_id": "krri-admin-boundary",
+   "name": "행정구역 경계 조회",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/adminBoundary.getDatasetInfo",
+    "asap-mcp-core/adminBoundary.searchBoundaries",
+    "asap-mcp-core/adminBoundary.findBoundaryByPoint"
+   ]
+  },
+  {
+   "mcp_id": "krri-vworld-representative-data",
+   "name": "VWorld 대표 공간데이터",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/vworld.getDatasetInfo",
+    "asap-mcp-core/vworld.getAdministrativeBoundaries"
+   ]
+  },
+  {
+   "mcp_id": "krri-population-statistics",
+   "name": "주민등록 인구 통계",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/population.getDatasetInfo",
+    "asap-mcp-core/population.searchStatistics",
+    "asap-mcp-core/population.getAgeProfile",
+    "asap-mcp-core/population.getTrend"
+   ]
+  },
+  {
+   "mcp_id": "krri-road-cctv",
+   "name": "도로/CCTV 조회",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/road.getCctv"
+   ]
+  },
+  {
+   "mcp_id": "krri-ev-chargers",
+   "name": "전기차 충전소 조회",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/ev.getDatasetInfo",
+    "asap-mcp-core/ev.searchStations",
+    "asap-mcp-core/ev.getStation",
+    "asap-mcp-core/ev.searchChargers"
+   ]
+  },
+  {
+   "mcp_id": "krri-knowledge",
+   "name": "지식문서 검색/관리",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/knowledge.query",
+    "asap-mcp-core/knowledge.listDocs",
+    "asap-mcp-core/knowledge.deleteDoc"
+   ]
+  },
+  {
+   "mcp_id": "krri-bim-viewer",
+   "name": "BIM/3D 모델 조회/관리",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/bim.listModels",
+    "asap-mcp-core/bim.updateModel",
+    "asap-mcp-core/bim.deleteModel"
+   ]
+  },
+  {
+   "mcp_id": "krri-dem",
+   "name": "DEM/지형 정보",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/dem.getInfo"
+   ]
+  },
+  {
+   "mcp_id": "krri-assembly-pledges-2024",
+   "name": "22대 국회의원 선거구 공약",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/election.getDatasetInfo",
+    "asap-mcp-core/election.searchDistricts",
+    "asap-mcp-core/election.getDistrict",
+    "asap-mcp-core/election.findDistrictByPoint",
+    "asap-mcp-core/election.getAssemblyDistrictDatasetInfo",
+    "asap-mcp-core/election.searchAssemblyDistricts",
+    "asap-mcp-core/election.getAssemblyDistrict",
+    "asap-mcp-core/election.findAssemblyDistrictByPoint",
+    "asap-mcp-core/election.getAssemblyPledgeDatasetInfo",
+    "asap-mcp-core/election.searchAssemblyPledgeDistricts",
+    "asap-mcp-core/election.getAssemblyPledgeDistrict",
+    "asap-mcp-core/election.findAssemblyPledgeDistrictByPoint"
+   ]
+  },
+  {
+   "mcp_id": "krri-election-pledges-2026",
+   "name": "2026 지방선거 시도별 공약 요약",
+   "status": "online",
+   "tools": [
+    "asap-mcp-core/election.getLocalPledgeSummaryDatasetInfo",
+    "asap-mcp-core/election.searchLocalPledgeSummaries",
+    "asap-mcp-core/election.getLocalPledgeSummary",
+    "asap-mcp-core/election.findLocalPledgeSummaryByPoint"
+   ]
+  },
+  {
+   "mcp_id": "web-research",
+   "name": "웹 리서치",
+   "status": "online",
+   "tools": [
+    "web-search/web.search",
+    "web-search/web.fetch"
+   ]
+  },
+  {
+   "mcp_id": "route-accessibility",
+   "name": "경로/접근성 분석",
+   "status": "online",
+   "tools": [
+    "otp-router/otp_health_check",
+    "otp-router/otp_plan_trip",
+    "r5-server/health_check",
+    "r5-server/compute_isochrone",
+    "r5-server/compute_od_matrix"
+   ]
+  }
+ ]
+}

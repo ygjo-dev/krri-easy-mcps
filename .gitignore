@@ -16,8 +16,8 @@ dist/
 .vite/
 
 # logs / runtime
-# EASY 계정 · 세션 DB (KEM_DB_PATH 기본 data/easy.db)
-data/
+# EASY runtime data: 계정 · 내 MCP · Skill DB 와 Skill package 파일 (KEM_RUNTIME_DATA_DIR 기본). 실행 때 생긴다
+/app/runtime_data/
 *.log
 logs/
 
