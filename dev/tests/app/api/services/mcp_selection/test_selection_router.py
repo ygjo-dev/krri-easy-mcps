@@ -1,113 +1,27 @@
-"""내 MCP: Browser → BFF → Gateway /api/me/mcp-selections. 단위는 logical MCP(= Gateway group).
+"""/api/toolbox — 내 MCP HTTP contract. 이미 KRRI 에 있는 logical MCP 를 내 Gateway selection 에 넣고 빼는 것이다.
 
-FakeSelectionGateway 는 Gateway mcpMarket.service 의 정규화를 필요한 만큼 흉내 낸다:
-groupIds 는 아는 group 만, toolRefs = group 의 정의 refs + 명시 refs 중 등록된 server 것만 (소문자 · 중복 제거),
-cookie 가 없으면 guest UUID 를 새로 만들어 Set-Cookie 로 준다.
+- 브라우저 contract 는 mcp_id 뿐이다. 등록 · 해제는 Gateway 에 ``PUT {groupIds}`` (ASAP-web MCP market 과 같은 표현) 로 간다.
+- 사용자 식별은 Gateway guest cookie ``asap_mcp_guest`` (ASAP-web 과 같은 이름 · Path=/ · HttpOnly · SameSite=Lax · 1년).
+  예전 cookie ``kem_gateway_guest`` 는 같은 UUID 로 올리고 지운다. 형식이 틀린 cookie 는 Gateway 로 보내지 않는다.
+- 개발 중 MCP 는 409, 모르는 id · physical server id 는 404 이고 둘 다 Gateway 를 부르지 않는다.
+  Gateway 가 반영하지 않으면 409, Gateway 오류는 502 (성공으로 가정하지 않는다).
+- GET /api/toolbox/events 는 Gateway selection 신호 흐름을 guest cookie 로 열어 바이트 그대로 넘긴다.
+- 브라우저 JSON 에는 guest id · groupIds · toolRefs · 내부 주소가 없다.
 """
 
 import json
 import uuid
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.integrations.krri_asap.gateway_client import GatewayUnavailable, RealGatewayClient
-from app.api.integrations.krri_asap.selection_client import (
-    GATEWAY_GUEST_COOKIE,
-    RealSelectionClient,
-    Selection,
-    _issued_guest_id,
-    registered_mcp_ids,
-)
+from app.api.integrations.krri_asap.gateway_client import GatewayUnavailable
+from app.api.integrations.krri_asap.selection_client import EVENTS_PATH, GATEWAY_GUEST_COOKIE, RealSelectionClient
 from app.api.main import GATEWAY_UNAVAILABLE_DETAIL, create_app
 from app.api.services.mcp_selection.selection_router import IN_DEVELOPMENT_DETAIL, NOT_APPLIED_DETAIL
 from app.api.services.mcp_selection.selection_service import GUEST_COOKIE, LEGACY_GUEST_COOKIE
-
-BASE_URL = "http://gateway.internal.example:3000"
-
-TOOLS = [
-    {"name": "geo.geocode", "serverId": "asap-mcp-core", "inputSchema": {}},
-    {"name": "road.getCctv", "serverId": "asap-mcp-core", "inputSchema": {}},
-    {"name": "otp_plan_trip", "serverId": "otp-router", "inputSchema": {}},
-    {"name": "compute_isochrone", "serverId": "r5-server", "inputSchema": {}},
-    {"name": "web.search", "serverId": "web-search", "inputSchema": {}},
-]
-GROUP_REFS = {
-    "krri-map-location": ["asap-mcp-core/geo.geocode"],
-    "krri-road-cctv": ["asap-mcp-core/road.getcctv"],
-    "route-accessibility": ["otp-router/*", "r5-server/*"],
-    "web-research": ["web-search/*"],
-}
-RESOLVED = {
-    "krri-map-location": ["asap-mcp-core/geo.geocode"],
-    "krri-road-cctv": ["asap-mcp-core/road.getcctv"],
-    "route-accessibility": ["otp-router/otp_plan_trip", "r5-server/compute_isochrone"],
-    "web-research": ["web-search/web.search"],
-}
-MARKET = [
-    {"id": g, "name": g, "serverIds": sorted({r.split("/")[0] for r in refs}), "toolRefs": refs,
-     "resolvedToolRefs": RESOLVED[g], "status": "ready"}
-    for g, refs in GROUP_REFS.items()
-]
-AVAILABLE = {"asap-mcp-core", "otp-router", "r5-server", "web-search"}
-
-
-class FakeSelectionGateway:
-    def __init__(self):
-        self.store: dict[str, dict] = {}
-        self.calls: list[tuple[str, str | None]] = []
-        self.bodies: list[dict] = []
-        self.fail: Exception | None = None
-        self.drop_group: str | None = None  # Gateway 가 이 group 을 조용히 버리는 경우 (예: disabled)
-
-    def seed(self, group_ids, tool_refs) -> str:
-        guest = str(uuid.uuid4())
-        self.store[guest] = self._normalize(group_ids, tool_refs)
-        return guest
-
-    def _normalize(self, group_ids, tool_refs):
-        groups = [g for g in dict.fromkeys(group_ids) if g in GROUP_REFS and g != self.drop_group]
-        refs = [r.lower() for g in groups for r in GROUP_REFS[g]] + [r.lower() for r in tool_refs]
-        refs = [r for r in dict.fromkeys(refs) if r.split("/")[0] in AVAILABLE]
-        return {"groupIds": groups, "serverIds": sorted({r.split("/")[0] for r in refs}), "toolRefs": refs}
-
-    def __call__(self, method, path, body, cookie):
-        assert path == "/api/me/mcp-selections"
-        guest = cookie.split("=", 1)[1] if cookie else None
-        self.calls.append((method, guest))
-        if self.fail:
-            raise self.fail
-        set_cookies = []
-        if not guest:
-            guest = str(uuid.uuid4())
-            set_cookies = [f"{GATEWAY_GUEST_COOKIE}={guest}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax"]
-        if method == "PUT":
-            assert set(body) <= {"groupIds", "toolRefs", "serverIds"}
-            self.bodies.append(body)
-            self.store[guest] = self._normalize(body.get("groupIds", []), body.get("toolRefs", []))
-        return self.store.get(guest, {"groupIds": [], "serverIds": [], "toolRefs": []}), set_cookies
-
-    def puts(self):
-        return [c for c in self.calls if c[0] == "PUT"]
-
-
-@pytest.fixture
-def gw():
-    return FakeSelectionGateway()
-
-
-@pytest.fixture
-def app(gw):
-    app = create_app()
-    responses = {"/api/tools": TOOLS, "/api/mcp-market": MARKET}
-    app.state.gateway = RealGatewayClient(BASE_URL, fetch_json=responses.__getitem__)
-    app.state.selection = RealSelectionClient(BASE_URL, transport=gw)
-    return app
-
-
-@pytest.fixture
-def client(app):
-    return TestClient(app)
+from tests.app.api.integrations.krri_asap.gateway_selection_fake import BASE_URL, STREAM, FakeGatewayEvents
 
 
 def seeded_client(app, gw, group_ids, tool_refs):
@@ -116,8 +30,11 @@ def seeded_client(app, gw, group_ids, tool_refs):
     return c
 
 
-def test_get_empty_toolbox_issues_canonical_gateway_cookie(client, gw):
-    r = client.get("/api/toolbox")
+# ── guest cookie (asap_mcp_guest) ───────────────────────────────────
+
+
+def test_get_empty_toolbox_issues_canonical_gateway_cookie(live_client, gw):
+    r = live_client.get("/api/toolbox")
     assert r.status_code == 200
     assert r.json() == {"mcp_ids": [], "mcps": []}
     [header] = r.headers.get_list("set-cookie")
@@ -125,7 +42,7 @@ def test_get_empty_toolbox_issues_canonical_gateway_cookie(client, gw):
     assert GUEST_COOKIE == GATEWAY_GUEST_COOKIE == "asap_mcp_guest"
     issued = gw.calls[0]
     assert issued == ("GET", None)
-    guest = client.cookies.get(GUEST_COOKIE)
+    guest = live_client.cookies.get(GUEST_COOKIE)
     assert header.startswith(f"asap_mcp_guest={guest};")
     assert "; Path=/;" in header + ";" and "Path=/api" not in header
     assert "HttpOnly" in header and "samesite=lax" in header.lower() and "Max-Age=31536000" in header
@@ -236,30 +153,39 @@ def test_failed_gateway_call_keeps_legacy_cookie(app, gw):
     assert r.headers.get_list("set-cookie") == []
 
 
-def test_add_get_remove_writes_group_id(client, gw):
-    client.get("/api/toolbox")
-    guest = client.cookies.get(GUEST_COOKIE)
-    body = client.post("/api/toolbox/krri-road-cctv").json()
+def test_invalid_portal_cookie_is_not_forwarded(live_client, gw):
+    live_client.cookies.set(GUEST_COOKIE, "not-a-uuid; asap_mcp_guest=evil")
+    live_client.get("/api/toolbox")
+    assert gw.calls[0] == ("GET", None)
+
+
+# ── 등록 · 해제 → Gateway PUT {groupIds} ──────────────────────────────
+
+
+def test_add_get_remove_writes_group_id(live_client, gw):
+    live_client.get("/api/toolbox")
+    guest = live_client.cookies.get(GUEST_COOKIE)
+    body = live_client.post("/api/toolbox/krri-road-cctv").json()
     assert body["mcp_ids"] == ["krri-road-cctv"]
     assert body["mcps"][0]["display_name"] == "krri-road-cctv"
     assert body["mcps"][0]["category"] == "KRRI 정책현안 분석도구"
     assert body["mcps"][0]["tool_count"] == 1
-    assert client.get("/api/toolbox").json()["mcp_ids"] == ["krri-road-cctv"]
+    assert live_client.get("/api/toolbox").json()["mcp_ids"] == ["krri-road-cctv"]
     # Gateway selection 의 canonical 값은 groupId. toolRefs 는 Gateway 가 group 에서 펼친 것뿐
     assert gw.store[guest]["groupIds"] == ["krri-road-cctv"]
     assert gw.store[guest]["toolRefs"] == ["asap-mcp-core/road.getcctv"]
-    assert client.delete("/api/toolbox/krri-road-cctv").json()["mcp_ids"] == []
+    assert live_client.delete("/api/toolbox/krri-road-cctv").json()["mcp_ids"] == []
     assert gw.store[guest] == {"groupIds": [], "serverIds": [], "toolRefs": []}
     # 첫 GET 뒤로는 모든 Gateway 호출이 같은 guest 로 갔다
     assert {g for _, g in gw.calls[1:]} == {guest}
     # 다른 브라우저(cookie 없음)는 다른 내 MCP
-    assert TestClient(client.app).get("/api/toolbox").json()["mcp_ids"] == []
+    assert TestClient(live_client.app).get("/api/toolbox").json()["mcp_ids"] == []
 
 
-def test_put_body_is_group_ids_only_like_asap_web(client, gw):
-    client.post("/api/toolbox/krri-map-location")
-    client.post("/api/toolbox/web-research")
-    client.delete("/api/toolbox/krri-map-location")
+def test_put_body_is_group_ids_only_like_asap_web(live_client, gw):
+    live_client.post("/api/toolbox/krri-map-location")
+    live_client.post("/api/toolbox/web-research")
+    live_client.delete("/api/toolbox/krri-map-location")
     assert gw.bodies == [
         {"groupIds": ["krri-map-location"]},
         {"groupIds": ["krri-map-location", "web-research"]},
@@ -267,45 +193,45 @@ def test_put_body_is_group_ids_only_like_asap_web(client, gw):
     ]
 
 
-def test_same_server_groups_are_independent(client, gw):
+def test_same_server_groups_are_independent(live_client, gw):
     # 같은 physical server(asap-mcp-core) 의 두 logical MCP 는 따로 등록 · 해제된다
-    client.post("/api/toolbox/krri-map-location")
-    assert client.post("/api/toolbox/krri-road-cctv").json()["mcp_ids"] == ["krri-map-location", "krri-road-cctv"]
-    assert client.delete("/api/toolbox/krri-map-location").json()["mcp_ids"] == ["krri-road-cctv"]
+    live_client.post("/api/toolbox/krri-map-location")
+    assert live_client.post("/api/toolbox/krri-road-cctv").json()["mcp_ids"] == ["krri-map-location", "krri-road-cctv"]
+    assert live_client.delete("/api/toolbox/krri-map-location").json()["mcp_ids"] == ["krri-road-cctv"]
 
 
-def test_first_add_without_cookie_uses_issued_guest_for_put(client, gw):
-    r = client.post("/api/toolbox/web-research")
+def test_first_add_without_cookie_uses_issued_guest_for_put(live_client, gw):
+    r = live_client.post("/api/toolbox/web-research")
     assert r.json()["mcp_ids"] == ["web-research"]
-    guest = client.cookies.get(GUEST_COOKIE)
+    guest = live_client.cookies.get(GUEST_COOKIE)
     assert gw.calls == [("GET", None), ("PUT", guest)]
 
 
 @pytest.mark.parametrize("mcp_id", ["nope", "asap-mcp-core", "otp-router", "web-search"])
-def test_unknown_or_physical_id_404_without_gateway_write(client, gw, mcp_id):
-    assert client.post(f"/api/toolbox/{mcp_id}").status_code == 404
-    assert client.delete(f"/api/toolbox/{mcp_id}").status_code == 404
+def test_unknown_or_physical_id_404_without_gateway_write(live_client, gw, mcp_id):
+    assert live_client.post(f"/api/toolbox/{mcp_id}").status_code == 404
+    assert live_client.delete(f"/api/toolbox/{mcp_id}").status_code == 404
     assert gw.calls == []
 
 
 @pytest.mark.parametrize("method", ["post", "delete"])
-def test_development_mcp_is_refused_without_gateway_call(client, gw, method):
-    r = getattr(client, method)("/api/toolbox/gtfs-accessibility-aro")
+def test_development_mcp_is_refused_without_gateway_call(live_client, gw, method):
+    r = getattr(live_client, method)("/api/toolbox/gtfs-accessibility-aro")
     assert r.status_code == 409
     assert r.json() == {"detail": IN_DEVELOPMENT_DETAIL}
     assert gw.calls == []
 
 
-def test_duplicate_add_is_stable(client, gw):
-    client.post("/api/toolbox/krri-road-cctv")
-    r = client.post("/api/toolbox/krri-road-cctv")
+def test_duplicate_add_is_stable(live_client, gw):
+    live_client.post("/api/toolbox/krri-road-cctv")
+    r = live_client.post("/api/toolbox/krri-road-cctv")
     assert r.status_code == 200
     assert r.json()["mcp_ids"] == ["krri-road-cctv"]
     assert len(gw.puts()) == 1
 
 
-def test_remove_not_selected_is_stable(client, gw):
-    r = client.delete("/api/toolbox/web-research")
+def test_remove_not_selected_is_stable(live_client, gw):
+    r = live_client.delete("/api/toolbox/web-research")
     assert r.status_code == 200
     assert r.json()["mcp_ids"] == []
     assert gw.puts() == []
@@ -320,13 +246,13 @@ def test_add_keeps_other_groups(app, gw):
     assert gw.store[guest]["groupIds"] == ["krri-road-cctv", "web-research", "route-accessibility"]
 
 
-def test_multi_server_group_is_one_mcp(client, gw):
-    body = client.post("/api/toolbox/route-accessibility").json()
+def test_multi_server_group_is_one_mcp(live_client, gw):
+    body = live_client.post("/api/toolbox/route-accessibility").json()
     assert body["mcp_ids"] == ["route-accessibility"]
     assert len(body["mcps"]) == 1 and body["mcps"][0]["display_name"] == "R5 기반 등시선도 MCP"
-    guest = client.cookies.get(GUEST_COOKIE)
+    guest = live_client.cookies.get(GUEST_COOKIE)
     assert gw.store[guest]["toolRefs"] == ["otp-router/*", "r5-server/*"]
-    client.delete("/api/toolbox/route-accessibility")
+    live_client.delete("/api/toolbox/route-accessibility")
     assert gw.store[guest]["toolRefs"] == []
 
 
@@ -353,16 +279,12 @@ def test_legacy_partial_refs_cover_only_whole_groups(app, gw):
     assert c.get("/api/toolbox").json()["mcp_ids"] == ["krri-map-location"]
 
 
-def test_registered_mcp_ids_rule():
-    mcps = [{"mcp_id": g, "tool_refs": refs} for g, refs in GROUP_REFS.items()]
-    assert registered_mcp_ids(Selection(("web-research", "gone"), ("asap-mcp-core/*",)), mcps) == ["web-research"]
-    assert registered_mcp_ids(Selection((), ("otp-router/*", "r5-server/*")), mcps) == ["route-accessibility"]
-    assert registered_mcp_ids(Selection((), ()), mcps) == []
+# ── 실패 · 브라우저 노출 ───────────────────────────────────────────
 
 
-def test_gateway_dropping_group_is_409_not_success(client, gw):
+def test_gateway_dropping_group_is_409_not_success(live_client, gw):
     gw.drop_group = "web-research"
-    r = client.post("/api/toolbox/web-research")
+    r = live_client.post("/api/toolbox/web-research")
     assert r.status_code == 409
     assert r.json() == {"detail": NOT_APPLIED_DETAIL}
     # 이번에 발급된 guest 는 실패 응답에도 실린다
@@ -371,15 +293,15 @@ def test_gateway_dropping_group_is_409_not_success(client, gw):
 
 @pytest.mark.parametrize("method,path", [("get", "/api/toolbox"), ("post", "/api/toolbox/krri-road-cctv"),
                                          ("delete", "/api/toolbox/krri-road-cctv")])
-def test_gateway_failure_is_sanitized(client, gw, method, path):
+def test_gateway_failure_is_sanitized(live_client, gw, method, path):
     gw.fail = GatewayUnavailable(f"PUT {BASE_URL} Traceback asap_mcp_guest=1234 192.168.71.236")
-    r = getattr(client, method)(path)
+    r = getattr(live_client, method)(path)
     assert r.status_code == 502
     assert r.json() == {"detail": GATEWAY_UNAVAILABLE_DETAIL}
 
 
-def test_put_failure_after_get_does_not_claim_success(client, gw):
-    client.get("/api/toolbox")
+def test_put_failure_after_get_does_not_claim_success(live_client, gw):
+    live_client.get("/api/toolbox")
     real_call = gw.__call__
 
     def fail_put(method, path, body, cookie):
@@ -387,10 +309,10 @@ def test_put_failure_after_get_does_not_claim_success(client, gw):
             raise ConnectionError("down")
         return real_call(method, path, body, cookie)
 
-    client.app.state.selection = RealSelectionClient(BASE_URL, transport=fail_put)
-    assert client.post("/api/toolbox/krri-road-cctv").status_code == 502
-    client.app.state.selection = RealSelectionClient(BASE_URL, transport=gw)
-    assert client.get("/api/toolbox").json()["mcp_ids"] == []
+    live_client.app.state.selection = RealSelectionClient(BASE_URL, transport=fail_put)
+    assert live_client.post("/api/toolbox/krri-road-cctv").status_code == 502
+    live_client.app.state.selection = RealSelectionClient(BASE_URL, transport=gw)
+    assert live_client.get("/api/toolbox").json()["mcp_ids"] == []
 
 
 def test_browser_json_has_no_identity_or_internal_values(app, gw):
@@ -405,24 +327,6 @@ def test_browser_json_has_no_identity_or_internal_values(app, gw):
         assert marker not in text
 
 
-def test_invalid_portal_cookie_is_not_forwarded(client, gw):
-    client.cookies.set(GUEST_COOKIE, "not-a-uuid; asap_mcp_guest=evil")
-    client.get("/api/toolbox")
-    assert gw.calls[0] == ("GET", None)
-
-
-def test_issued_guest_id_parsing():
-    g = str(uuid.uuid4())
-    assert _issued_guest_id([f"{GATEWAY_GUEST_COOKIE}={g}; Max-Age=1; Path=/; HttpOnly; SameSite=Lax"]) == g
-    assert _issued_guest_id([f"{GATEWAY_GUEST_COOKIE}=nope; Path=/"]) is None
-    assert _issued_guest_id(["other=1"]) is None
-
-
-def test_real_http_error_becomes_gateway_unavailable():
-    with pytest.raises(GatewayUnavailable):
-        RealSelectionClient("http://127.0.0.1:9", timeout_seconds=2).get(None)
-
-
 def test_mock_mode_toolbox_roundtrip():
     c = TestClient(create_app())
     assert c.get("/api/toolbox").json()["mcp_ids"] == []
@@ -431,3 +335,81 @@ def test_mock_mode_toolbox_roundtrip():
     assert c.delete("/api/toolbox/route-accessibility").json()["mcp_ids"] == []
     assert c.post("/api/toolbox/r5-server").status_code == 404
     assert c.post("/api/toolbox/nodelink-accessibility-vwl").status_code == 409
+
+
+# ── 변경 신호 흐름 (GET /api/toolbox/events) ─────────────────────────
+
+
+def make_client(fake: FakeGatewayEvents):
+    app = create_app()
+    app.state.selection = RealSelectionClient(BASE_URL, stream_transport=httpx.MockTransport(fake.handler))
+    return TestClient(app)
+
+
+def test_relays_gateway_stream_bytes_as_is_with_canonical_cookie():
+    fake = FakeGatewayEvents()
+    c = make_client(fake)
+    guest = str(uuid.uuid4())
+    c.cookies.set(GUEST_COOKIE, guest)
+    r = c.get("/api/toolbox/events")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    assert r.headers["cache-control"] == "no-cache, no-transform"
+    assert r.content == STREAM
+    [upstream] = fake.requests
+    assert upstream.url.path == EVENTS_PATH
+    assert upstream.headers["cookie"] == f"asap_mcp_guest={guest}"
+    assert "authorization" not in upstream.headers
+    assert r.headers.get_list("set-cookie") == []  # 이미 있는 guest 는 그대로
+    assert fake.closed == 1  # 흐름이 끝나면 Gateway 쪽도 닫는다
+
+
+def test_legacy_cookie_is_promoted_on_the_event_stream_too():
+    fake = FakeGatewayEvents()
+    c = make_client(fake)
+    guest = str(uuid.uuid4())
+    c.cookies.set(LEGACY_GUEST_COOKIE, guest)
+    r = c.get("/api/toolbox/events")
+    assert fake.requests[0].headers["cookie"] == f"asap_mcp_guest={guest}"
+    cookies = r.headers.get_list("set-cookie")
+    assert any(h.startswith(f"asap_mcp_guest={guest};") and "Path=/;" in h + ";" for h in cookies)
+    assert any(h.startswith(f"{LEGACY_GUEST_COOKIE}=") and "Path=/api" in h for h in cookies)
+
+
+def test_new_guest_issued_by_gateway_becomes_browser_cookie_not_body():
+    issued = str(uuid.uuid4())
+    fake = FakeGatewayEvents(issue=issued)
+    c = make_client(fake)
+    r = c.get("/api/toolbox/events")
+    assert "cookie" not in fake.requests[0].headers
+    [cookie] = r.headers.get_list("set-cookie")
+    assert cookie.startswith(f"asap_mcp_guest={issued};") and "HttpOnly" in cookie
+    assert issued.encode() not in r.content and b"guest:" not in r.content
+
+
+def test_events_do_not_forward_an_invalid_cookie():
+    fake = FakeGatewayEvents()
+    c = make_client(fake)
+    c.cookies.set(GUEST_COOKIE, "not-a-uuid")
+    c.get("/api/toolbox/events")
+    assert "cookie" not in fake.requests[0].headers
+
+
+@pytest.mark.parametrize("status", [401, 403, 500, 502])
+def test_events_gateway_error_is_sanitized_502(status):
+    fake = FakeGatewayEvents(status=status)
+    r = make_client(fake).get("/api/toolbox/events")
+    assert r.status_code == 502
+    assert r.json() == {"detail": GATEWAY_UNAVAILABLE_DETAIL}
+    assert fake.closed == 1
+
+
+def test_events_unreachable_gateway_is_502():
+    def boom(request):
+        raise httpx.ConnectError("down", request=request)
+
+    app = create_app()
+    app.state.selection = RealSelectionClient(BASE_URL, stream_transport=httpx.MockTransport(boom))
+    r = TestClient(app).get("/api/toolbox/events")
+    assert r.status_code == 502
+    assert r.json() == {"detail": GATEWAY_UNAVAILABLE_DETAIL}

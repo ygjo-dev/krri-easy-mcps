@@ -1,15 +1,20 @@
-"""execution_service.to_execution: agentic /chat/stream 이벤트 → Portal Execution DTO.
+"""execution_service — agentic /chat/stream 이벤트 → 화면용 실행 결과.
 
 이벤트 모양은 agentic_ai 의 현재 흐름(2026-09-22 read-only 확인)을 따른다.
 해석 끝 message 는 "<STATUS> <recipe_id>" (CLARIFY · NO_MATCH 는 recipe 없이 STATUS 만),
-단계 끝 message 는 "<tool> 완료" / "<tool> 실패".
+단계 끝 message 는 "<tool> 완료" / "<tool> 실패". 모르는 event · 칸은 무시한다.
+결과에는 판정 · 기대 recipe/Tool 과 맞는지 · 단계 · 답 · 지도 명령 개수만 싣는다 (recipe_id 원문 · expected_* · 명령 본문 없음).
+단계 Tool 의 MCP 이름(mcp_name)은 질문의 expected_mcp_ids 중 그 Tool 을 가진 MCP 가 정확히 하나일 때만 붙인다.
 """
 
 import json
+from types import SimpleNamespace
 
 from app.api.integrations.agentic_ai.agentic_ai_client import ChatStreamReply
+from app.api.integrations.krri_asap.gateway_client import GatewayUnavailable
+from app.api.services.ai_demo.execution_service import LIMITATION_TOOL_IO_NONE, label_steps, to_execution
 from app.api.services.ai_demo.question_service import DemoQuestion
-from app.api.services.ai_demo.execution_service import LIMITATION_TOOL_IO_NONE, to_execution
+
 
 Q = DemoQuestion(
     question_id="suwon-station-cctv",
@@ -67,7 +72,7 @@ def test_no_match_and_clarify_have_no_steps():
         assert out["answer"] == "맞는 것이 없습니다."
 
 
-def test_one_step_success():
+def test_one_successful_step_matches_expected_tools():
     q = DemoQuestion("iksan", "krri-map-location", "익산역 위치 보여줘", "recipe_001", ("krri-map-location",),
                      ("asap-mcp-core/geo.geocode",), True)
     out = execute(resolve("SELECT recipe_001") + step("geocode_place", "geo.geocode") + result(), q)
@@ -126,3 +131,34 @@ def test_output_has_no_recipe_id_expected_metadata_or_raw_commands():
     text = json.dumps(out, ensure_ascii=False)
     for marker in ("recipe_036", '"expected_recipe_id"', '"expected_tools"', '"expected_mcp_ids"', '"commands"', "geojson", "map.addLayer"):
         assert marker not in text, marker
+
+
+# ── 단계 MCP 이름 ───────────────────────────────────────────────────
+
+
+def test_step_labels_are_optional_when_gateway_is_down(client):
+    def down():
+        raise GatewayUnavailable("down")
+
+    client.app.state.gateway.list_mcps = down
+    body = client.post("/api/demo/questions/busan-station-district/execute").json()
+    assert body["matches_expected_tools"] is True
+    assert [s["mcp_name"] for s in body["steps"]] == [None, None]
+
+
+def test_step_label_needs_exactly_one_expected_mcp_owning_the_tool():
+    """Tool 소속은 Gateway group 의 Tool 로만 본다. 후보(expected_mcp_ids) 둘이 같은 Tool 을 가지면 이름을 붙이지 않는다."""
+    def mcp(mcp_id, name, tools):
+        return {"mcp_id": mcp_id, "name": name, "tools": [{"name": t} for t in tools]}
+
+    def labels(mcps):
+        state = SimpleNamespace(gateway=SimpleNamespace(list_mcps=lambda: mcps, source="live"), presentation={})
+        steps = [{"tool": "geo.geocode"}, {"tool": "road.getCctv"}]
+        label_steps(steps, Q, state)
+        return [s["mcp_name"] for s in steps]
+
+    owners = [mcp("krri-map-location", "지도", ["geo.geocode"]), mcp("krri-road-cctv", "CCTV", ["road.getCctv"])]
+    assert labels(owners) == ["지도", "CCTV"]
+    shared = [mcp("krri-map-location", "지도", ["geo.geocode"]), mcp("krri-road-cctv", "CCTV", ["geo.geocode", "road.getCctv"])]
+    assert labels(shared) == [None, "CCTV"]
+    assert labels([mcp("other-mcp", "기타", ["geo.geocode", "road.getCctv"])]) == [None, None]  # 후보 밖 MCP 는 안 본다

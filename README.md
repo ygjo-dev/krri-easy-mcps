@@ -51,7 +51,7 @@ krri-easy-mcps/
 │   └── runtime_data/                 실행 때 생김, gitignore (아래 「Runtime data」)
 ├── dev/
 │   ├── pytest.ini · requirements-dev.txt
-│   └── tests/api/                    auth · mcp_selection · ai_demo · skills · integrations · fixtures (+ test_api.py)
+│   └── tests/app/api/                app/api 와 같은 모양: test_main.py · services/<기능>/ · integrations/<시스템>/ · mcp_definitions/
 ├── .env.example
 └── README.md
 ```
@@ -69,7 +69,7 @@ Backend (BFF, 포트 8610)
 python3 -m venv .venv
 .venv/bin/pip install -r dev/requirements-dev.txt
 .venv/bin/uvicorn app.api.main:app --host 127.0.0.1 --port 8610
-.venv/bin/python -m pytest dev/tests -q        # test
+.venv/bin/python -m pytest -q -c dev/pytest.ini dev/tests   # test
 ```
 
 Frontend (Vite dev, 포트 5610. `/api` 는 BFF 로 proxy)
@@ -81,6 +81,25 @@ npm run dev          # http://127.0.0.1:5610
 npm run build        # tsc + vite build
 npm run lint         # oxlint
 ```
+
+### 테스트
+
+`dev/tests` 는 `app` 구조를 그대로 따른다 (`app/api/services/catalog/catalog_service.py` ↔
+`dev/tests/app/api/services/catalog/test_catalog_service.py`). 각 test 파일은 대응하는 production module 이 밖에서 보이게 보장하는
+behavior 와 외부 integration contract 의 실행 가능한 명세다. 파일 머리말과 test 이름만 읽어도 규칙을 알 수 있게 쓴다.
+
+| 파일 | 다루는 것 |
+|---|---|
+| `*_router.py` 의 test | HTTP method · path · status · request/response 모양 · 권한 · cookie |
+| `*_service.py` 의 test | EASY 안의 규칙 (조립된 앱이 필요하면 API 로 관찰한다) |
+| `*_client.py` 의 test | 외부 시스템(KRRI_ASAP Gateway · agentic_ai)에 무엇을 보내고 무엇은 보내지 않는지 |
+| `*_repository.py` 의 test | local DB 저장 |
+
+KRRI_ASAP 와의 경계는 `dev/tests/app/api/integrations/krri_asap/` 의 두 파일이 정한다. 가짜 Gateway 를 실제 HTTP 로 띄워
+client 가 보낸 method · path · header · body 를 확인한다. 테스트는 실제 `app/runtime_data/` 를 쓰지 않는다 (테스트마다 임시 폴더).
+
+새 behavior 는 보통 실패하는 test 를 먼저 쓰고(Red), 그것을 통과시키는 최소 구현을 하고(Green),
+suite 를 green 으로 유지한 채 내부를 정리한다(Refactor).
 
 설정은 `.env.example` 참고. BFF 는 환경변수를 읽는다. 실제 Gateway · agentic_ai 로 띄우려면:
 
@@ -347,7 +366,7 @@ entry 가 없는 group 도 숨기지 않는다: 뒤에 id 순으로 붙고 categ
 실행 질문 17개는 agentic_ai 평가 정답표(test_suite_v1 · v2)의 발화를 그대로 옮겼고, 지금 실행 경로(BFF → `/chat/stream` → KRRI)로
 17/17 이 기대 recipe · Tool 로 끝났다. agentic_ai 에 recipe 가 없는 MCP 5개(VWorld · BIM · DEM · 2026 지방선거 공약 · Web Search)의
 9개는 Tool 설명 · inputSchema 를 보고 새로 쓴 예시다. 출처 · 고른 규칙 · 뺀 질문은 `demo_questions.yaml` 머리말과 줄 주석에 있다.
-`dev/tests/api/ai_demo/test_demo_coverage.py` 가 실제 catalog snapshot(`dev/tests/api/fixtures/gateway_catalog_20261002.json`)으로
+`dev/tests/app/api/mcp_definitions/test_mcp_definitions.py` 가 실제 catalog snapshot(같은 폴더 `fixtures/gateway_catalog_20261002.json`)으로
 「모든 logical MCP 에 질문이 있다 · 대표 Tool 이 지금 catalog 에 있고 그 MCP 소속이다 · 쓰기 Tool 을 부르지 않는다」를 본다
 (`KEM_LIVE_GATEWAY_URL=http://127.0.0.1:3000` 을 주면 live Gateway 로도). 개발 중 MCP 는 Tool 이 없어 예외다 (loader 가 그런 질문을 거부한다).
 
