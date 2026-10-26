@@ -4,9 +4,17 @@
 
 ZIP 은 multipart 가 아니라 요청 body 그대로 받는다 (Content-Type application/zip, 새 dependency 없이).
 화면용 표시 정보(title · version · author · tags)는 query 로 온다. package 내용은 package_service.py 가 검증하고, 저장은 skill_service.py 가 한다.
+
+AI 자동 정리 (enrichment_service.py):
+    POST  /analyze          ZIP body → 검증 → AI 제안. **저장하지 않는다** (화면에서 검토 · 수정한 뒤 등록)
+    POST  /{id}/analyze     저장된 package 를 다시 정리한 제안. 저장하지 않는다
+    PATCH /{id}             검토한 표시 정보 저장 (요약 · 할 수 있는 일 · 추천 대상 · 사용 예시 · 이름 · 태그 …). package 파일은 그대로
+등록 화면은 POST /upload(기존, ZIP + 이름 · 버전 · 작성자 · 태그) 다음에 PATCH /{id} 로 나머지 표시 정보를 저장한다.
+모델 호출이 실패하면 SkillAiUnavailable → main.py 가 502 (내부 주소 · 모델 응답을 싣지 않는다).
 """
 
 import logging
+from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -15,12 +23,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ..auth.account_service import Login, require_admin
+from .enrichment_service import SkillInfoError, analyze_package, clean_info
 from .package_service import (
     MAX_UPLOAD_BYTES,
     TARGETS,
     SkillPackageError,
     SkillTooLarge,
     build_package,
+    package_metadata,
     read_zip,
     validate_package,
 )
@@ -52,14 +62,8 @@ def _meta(title: str, version: str, author: str, tags) -> SkillMeta:
 def _meta_from_query(request: Request, package) -> SkillMeta:
     """query 가 비면 frontmatter metadata(author · version, 규격의 문자열 map)에서 채운다."""
     q = request.query_params
-    extra = package.frontmatter.get("metadata")
-    extra = extra if isinstance(extra, dict) else {}
-    return _meta(
-        q.get("title", ""),
-        q.get("version") or str(extra.get("version") or ""),
-        q.get("author") or str(extra.get("author") or ""),
-        q.get("tags", ""),
-    )
+    extra = package_metadata(package)
+    return _meta(q.get("title", ""), q.get("version") or extra["version"], q.get("author") or extra["author"], q.get("tags", ""))
 
 
 def _package_error(exc: SkillPackageError) -> JSONResponse:
@@ -117,6 +121,54 @@ def create_skill(body: CreateSkill, request: Request, login: Login = Depends(req
         return JSONResponse(status_code=409, content={"detail": EXISTS_DETAIL})
     except SkillPackageError as exc:
         return _package_error(exc)
+
+
+@router.post("/analyze")
+async def analyze_skill(request: Request):
+    """ZIP 하나 → package 검증(업로드와 같은 규칙) → AI 공유 정보 제안. 저장하지 않는다."""
+    try:
+        data = await _zip_body(request)
+        package = await run_in_threadpool(lambda: validate_package(read_zip(data)))
+    except SkillPackageError as exc:
+        return _package_error(exc)
+    return await analyze_package(package, request.app.state.skill_ai)
+
+
+@router.post("/{skill_id}/analyze")
+async def reanalyze_skill(skill_id: str, request: Request):
+    """저장된 package 를 다시 정리한 제안. package 파일 · 표시 정보를 바꾸지 않는다."""
+    try:
+        package = await run_in_threadpool(request.app.state.skills.package, skill_id)
+    except SkillNotFound:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL) from None
+    except SkillPackageError as exc:
+        return _package_error(exc)
+    return await analyze_package(package, request.app.state.skill_ai)
+
+
+class UpdateSkillInfo(BaseModel):
+    """검토한 표시 정보. 보낸 칸만 바꾼다. 요약 · 추천 대상은 빈 문자열이면 지운다."""
+
+    title: str | None = None
+    version: str | None = None
+    author: str | None = None
+    tags: list[str] | None = None
+    summary: str | None = None
+    use_cases: list[str] | None = None
+    recommended_for: str | None = None
+    example_prompts: list[str] | None = None
+    enrichment_source: Literal["live", "mock", "manual"] | None = None
+
+
+@router.patch("/{skill_id}")
+def update_skill_info(skill_id: str, body: UpdateSkillInfo, request: Request):
+    try:
+        changes = clean_info(body.model_dump(exclude_unset=True, exclude_none=True))
+        return request.app.state.skills.update_info(skill_id, changes)
+    except SkillNotFound:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL) from None
+    except SkillInfoError as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
 @router.post("/upload", status_code=201)

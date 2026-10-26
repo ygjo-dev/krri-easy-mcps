@@ -4,7 +4,11 @@ package 형식 · 검증 · ZIP 은 package_service.py.
 
 저장 (app/runtime_data/skills/)
     skills.db skills 표                목록 · 상세용 metadata (화면 이름 · 버전 · 작성자 · 태그 · 호환 · 경고)
+                                      + 공유용 표시 정보 (요약 · 할 수 있는 일 · 추천 대상 · 사용 예시 · 정리 출처)
     uploaded_packages/<id>/source/    canonical package 파일 그대로 (main 파일 이름도 올린 그대로: SKILL.md 또는 skill.md)
+
+description 은 원본 SKILL.md frontmatter description 이고, summary 는 AI 자동 정리(사람 검토)로 만든 공유용 설명이다.
+표시 정보를 바꿔도 package 파일은 그대로다 (export 내용이 바뀌지 않는다).
 """
 
 import json
@@ -16,7 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from ..runtime_db import open_db
-from .package_service import EXPORT_MAIN_FILE, TARGETS, Package, SkillPackageError, build_zip, valid_skill_id
+from .package_service import (
+    EXPORT_MAIN_FILE,
+    TARGETS,
+    Package,
+    SkillPackageError,
+    build_zip,
+    valid_skill_id,
+    validate_package,
+)
 
 PREVIEW_TEXT_BYTES = 64 * 1024
 MAX_EXAMPLES = 5
@@ -41,6 +53,19 @@ CREATE TABLE IF NOT EXISTS skills (
     updated_at  REAL NOT NULL
 );
 """
+
+# 처음 표 이후에 더한 칸. 기존 DB 는 앱이 뜰 때 없는 칸만 ALTER TABLE ADD COLUMN 한다 (기존 행은 기본값).
+_ADDED_COLUMNS = {
+    "summary": "TEXT",
+    "use_cases": "TEXT NOT NULL DEFAULT '[]'",
+    "recommended_for": "TEXT",
+    "example_prompts": "TEXT NOT NULL DEFAULT '[]'",
+    # live | mock (AI 자동 정리를 검토해 저장) · manual (사람이 직접) · NULL (정리 전에 등록한 Skill)
+    "enrichment_source": "TEXT",
+}
+# update_info 로 바꿀 수 있는 칸. JSON 목록으로 저장하는 칸은 _LIST_COLUMNS.
+_INFO_COLUMNS = ("title", "version", "author", "tags", *_ADDED_COLUMNS)
+_LIST_COLUMNS = {"tags", "use_cases", "example_prompts"}
 
 
 class SkillNotFound(LookupError):
@@ -84,6 +109,10 @@ class SkillLibrary:
         self._dir.mkdir(parents=True, exist_ok=True)
         with open_db(self._db_path) as db:
             db.executescript(_SCHEMA)
+            have = {row[1] for row in db.execute("PRAGMA table_info(skills)")}
+            for column, kind in _ADDED_COLUMNS.items():
+                if column not in have:
+                    db.execute(f"ALTER TABLE skills ADD COLUMN {column} {kind}")
 
     def _source(self, skill_id: str) -> Path:
         if not valid_skill_id(skill_id):  # 경로 조각으로 쓰기 전에 다시 막는다
@@ -122,6 +151,12 @@ class SkillLibrary:
             "file_count": row["file_count"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+            # 공유용 표시 정보. summary 가 없으면 화면은 description 을 보인다.
+            "summary": row["summary"],
+            "use_cases": json.loads(row["use_cases"]),
+            "recommended_for": row["recommended_for"],
+            "example_prompts": json.loads(row["example_prompts"]),
+            "enrichment_source": row["enrichment_source"],
         }
 
     def files(self, skill_id: str) -> dict[str, bytes]:
@@ -152,6 +187,11 @@ class SkillLibrary:
             "warnings": json.loads(row["warnings"]),
             "created_by": row["created_by"],
         }
+
+    def package(self, skill_id: str) -> Package:
+        """저장된 package 를 다시 검증해 읽는다 (AI 로 다시 정리할 때). 파일은 바꾸지 않는다."""
+        self._row(skill_id)
+        return validate_package(self.files(skill_id))
 
     def export(self, skill_id: str, target: str) -> tuple[str, bytes]:
         """(파일 이름, ZIP). 내용은 canonical 그대로, target 에 따라 main 파일 이름만 맞춘다."""
@@ -229,6 +269,22 @@ class SkillLibrary:
             shutil.rmtree(staging, ignore_errors=True)
             raise
         shutil.rmtree(old, ignore_errors=True)
+        return self.detail(skill_id)
+
+    def update_info(self, skill_id: str, changes: dict) -> dict:
+        """표시 정보만 바꾼다 (검사는 enrichment_service.clean_info). package 파일 · id · description 은 그대로다."""
+        row = self._row(skill_id)
+        values = {k: v for k, v in changes.items() if k in _INFO_COLUMNS}
+        if "title" in values:
+            values["title"] = values["title"] or skill_id
+        if "version" in values:
+            values["version"] = values["version"] or row["version"]
+        for column in _LIST_COLUMNS & values.keys():
+            values[column] = json.dumps(values[column], ensure_ascii=False)
+        values["updated_at"] = self._clock()
+        with open_db(self._db_path) as db:
+            assignments = ", ".join(f"{column} = ?" for column in values)
+            db.execute(f"UPDATE skills SET {assignments} WHERE id = ?", (*values.values(), skill_id))
         return self.detail(skill_id)
 
     def delete(self, skill_id: str) -> None:

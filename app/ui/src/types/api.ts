@@ -113,9 +113,13 @@ export interface SkillCompat {
   claude: boolean
 }
 
+// 공유용 표시 정보를 누가 만들었는지. live · mock = AI 자동 정리를 사람이 검토해 저장, manual = 사람이 직접. null = 정리 전
+export type EnrichmentSource = 'live' | 'mock' | 'manual'
+
 export interface SkillCard {
   id: string
   title: string
+  // 원본 SKILL.md frontmatter description (AI 가 바꾸지 않는다)
   description: string
   version: string
   author: string
@@ -125,6 +129,12 @@ export interface SkillCard {
   // unix 초
   created_at: number
   updated_at: number
+  // 공유용 설명 (AI 자동 정리 + 검토). 없으면 화면은 description 을 보인다
+  summary: string | null
+  use_cases: string[]
+  recommended_for: string | null
+  example_prompts: string[]
+  enrichment_source: EnrichmentSource | null
 }
 
 export interface SkillDetail extends SkillCard {
@@ -148,6 +158,46 @@ export interface CreateSkillInput {
   tags: string[]
   instructions: string
   example: string
+}
+
+// AI 자동 정리가 제안한 공유용 표시 정보. 저장 전 사람이 고친다
+export interface SkillSuggestion {
+  title: string
+  summary: string
+  tags: string[]
+  use_cases: string[]
+  recommended_for: string
+  example_prompts: string[]
+}
+
+// POST /api/skills/analyze · /api/skills/{id}/analyze. 저장하지 않은 미리보기다
+export interface SkillAnalysis {
+  // 원본 package 정보 (AI 가 만든 값이 아니다). version · author 는 frontmatter metadata, 없으면 빈 값
+  package: {
+    id: string
+    description: string
+    version: string
+    author: string
+    file_count: number
+    total_bytes: number
+    warnings: string[]
+    compat: SkillCompat
+  }
+  suggestion: SkillSuggestion
+  analysis_source: 'live' | 'mock'
+}
+
+// PATCH /api/skills/{id}. 보낸 칸만 바꾼다. summary · recommended_for 는 빈 문자열이면 지운다
+export interface SkillInfoUpdate {
+  title?: string
+  version?: string
+  author?: string
+  tags?: string[]
+  summary?: string
+  use_cases?: string[]
+  recommended_for?: string
+  example_prompts?: string[]
+  enrichment_source?: EnrichmentSource
 }
 
 // ZIP 업로드 때 화면 표시 정보. 비우면 SKILL.md frontmatter metadata (또는 이전 버전 값)

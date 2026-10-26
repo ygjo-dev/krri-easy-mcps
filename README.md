@@ -8,6 +8,7 @@ KRRI 가 제공하는 MCP 서버를 찾아보고, 상세 정보와 Tool 을 확�
 > 기존 `POST /chat/stream` 을 부른다 (기본은 mock).
 > EASY 자체 로그인(KRRI_ASAP 로그인과 별개)이 있고, 로그인하면 내 MCP이 계정에 저장된다. 비로그인 guest 도 그대로 쓸 수 있다.
 > EASY ADMIN 은 「AI Skills」(사용자용 Skill library: 등록 · 탐색 · ChatGPT/Claude 용 ZIP 내려받기)를 쓸 수 있다.
+> Skill ZIP 을 올리면 AI(독파모)가 내용을 읽고 공유용 제목 · 요약 · 태그 · 활용 예시를 정리한다 (`KEM_SKILL_AI_MODE=live`, 기본 mock).
 
 ## 구성과 관계
 
@@ -20,7 +21,8 @@ KRRI EASY UI            app/ui    React + TypeScript + Vite (dev :5610, /api 는
    ▼
 KRRI EASY FastAPI BFF   app/api   thin BFF (:8610). 내부 주소 · credential 은 여기 환경변수에만
    ├──▶ KRRI_ASAP Gateway          MCP catalog · Tool · 상태 (GET), 내 MCP selection (GET/PUT · SSE)
-   └──▶ agentic_ai                 기존 POST /chat/stream → Resolve → Recipe → KRRI_ASAP 실행
+   ├──▶ agentic_ai                 기존 POST /chat/stream → Resolve → Recipe → KRRI_ASAP 실행
+   └──▶ 독파모 (vLLM, OpenAI 호환)  AI Skills 자동 정리만. POST /v1/chat/completions (agentic_ai 를 거치지 않는다)
 ```
 
 BFF 가 쓰는 runtime data 는 `app/runtime_data/`(SQLite · Skill 파일, gitignore), test 는 `dev/tests/` 다.
@@ -39,10 +41,11 @@ krri-easy-mcps/
 │   │   │   ├── catalog/              전체 MCP 목록 · 상세 · 카드 규칙 · 개발 중 MCP (/api/mcps)
 │   │   │   ├── mcp_selection/        내 MCP: guest cookie · 계정 동기화 · selections.db (/api/toolbox)
 │   │   │   ├── ai_demo/              예제 질문 · AI로 사용해보기 실행 결과 변환 (/api/mcps/{id}/demo-questions, /api/demo)
-│   │   │   └── skills/               AI Skills: package 검증 · ZIP · library 저장 (/api/skills)
+│   │   │   └── skills/               AI Skills: package 검증 · ZIP · library 저장 · AI 자동 정리 (/api/skills)
 │   │   ├── integrations/
 │   │   │   ├── krri_asap/            gateway_client.py (catalog) · selection_client.py (내 MCP selection)
-│   │   │   └── agentic_ai/           agentic_ai_client.py (/chat/stream)
+│   │   │   ├── agentic_ai/           agentic_ai_client.py (/chat/stream)
+│   │   │   └── skill_ai/             skill_ai_client.py (AI Skills 자동 정리 모델, /v1/chat/completions)
 │   │   └── mcp_definitions/          EASY 가 소유한 MCP 정의 (yaml)
 │   │       ├── presentation.yaml     Portal 전용 표시 정보 (mcp_id = Gateway group id 기준)
 │   │       ├── planned_mcps.yaml     개발 중 MCP (Gateway 에 아직 없음. 「개발 중」 카드만)
@@ -114,6 +117,14 @@ Gateway `GET /api/tools` 는 호출마다 MCP tools/list refresh 를 일으키�
 AI로 사용해보기의 한 요청은 LLM 해석과 KRRI 실행을 포함하므로 기본 360초(`KEM_AGENTIC_AI_TIMEOUT_SECONDS`) 를 기다린다.
 agentic_ai 를 못 부르거나 흐름이 깨지면 `/api/demo/questions/*/execute` 는 502 를 내고, mock 으로 자동 전환하지 않는다.
 
+AI Skills 자동 정리를 실제 모델(독파모)로 하려면 위 명령에 다음을 더한다 (개발 장비의 vLLM, key 없음):
+
+```bash
+KEM_SKILL_AI_MODE=live KEM_SKILL_AI_BASE_URL=http://127.0.0.1:18000 KEM_SKILL_AI_MODEL=solar-open2-250b
+```
+
+모델 호출이 실패하면 `/api/skills/analyze` 는 502 와 정해진 문구만 낸다. mock 정리 결과로 바꾸지 않는다 (사용자는 직접 입력해 등록할 수 있다).
+
 ## Runtime data
 
 `app/runtime_data/` (`KEM_RUNTIME_DATA_DIR`) 는 BFF 가 처음 뜰 때 폴더째 만든다. gitignore 이고 commit 하지 않는다.
@@ -122,7 +133,7 @@ agentic_ai 를 못 부르거나 흐름이 깨지면 `/api/demo/questions/*/execu
 |---|---|
 | `accounts/accounts.db` | EASY 계정 `users` · 로그인 세션 `sessions` |
 | `mcp_selections/selections.db` | 계정 내 MCP `account_toolboxes` · 세션별 동기화 기록 `session_syncs` |
-| `skills/skills.db` | AI Skills metadata `skills` |
+| `skills/skills.db` | AI Skills metadata `skills` (공유용 표시 정보 칸 포함. 옛 DB 는 앱이 뜰 때 없는 칸만 더한다) |
 | `skills/uploaded_packages/<id>/source/` | AI Skills package 파일 (올린 그대로) |
 
 Python stdlib `sqlite3` 와 parameter binding 만 쓴다. selections.db 의 `user_id` · `token_hash` 는 accounts.db 값이고
@@ -143,8 +154,8 @@ BFF 가 처음 뜰 때 accounts.db 에 **개발 · 검증용 초기 관리자 �
 | `/` | 전체 MCP. 카드(이름 · 제공 · 요약 · Tool 수 · 상태 · 분류 · 내 MCP 등록), 검색, 분류 필터. 개발 중 MCP 는 「개발 중」 배지만 (Tool 수 · 등록 버튼 없음) |
 | `/mcps/:mcpId` | MCP 상세. 왼쪽: 정보 · 내 MCP 등록/해제 · 상태/제공/Tools/분류 · 「Tool 목록」(접히는 행) / 「MCP 정보」 탭. 오른쪽: AI로 사용해보기 panel (좁은 화면에서는 아래로) |
 | `/toolbox` | 내 MCP. 내가 등록한 기존 MCP 카드와 해제. 비었으면 전체 MCP으로 안내 |
-| `/skills` | AI Skills (EASY ADMIN 만, 메뉴도 ADMIN 에게만 보임). 설명 · 사용 순서 3단계 · 검색 · 태그 필터 · Skill 카드 · 새 Skill 등록(간단히 만들기 / ZIP 업로드) |
-| `/skills/:skillId` | Skill 상세. 버전 · 작성자 · 태그 · 업데이트 · SKILL.md 미리보기/원문 · 포함 파일 · 사용 예시 · 「ChatGPT용 ZIP 다운로드」/「Claude용 ZIP 다운로드」(ZIP 내려받기 + 추가 안내) · 원본 패키지 · 새 버전 · 삭제 |
+| `/skills` | AI Skills (EASY ADMIN 만, 메뉴도 ADMIN 에게만 보임). 설명 · 사용 순서 3단계 · 검색(제목 · 요약 · 원본 설명 · 태그 · 할 수 있는 일 · 추천 대상 · 사용 예시) · 태그 필터 · Skill 카드(요약, 없으면 원본 description) · 「새 Skill 공유」(ZIP으로 공유 = AI 자동 정리 → 검토 · 수정 → 공유 / 직접 만들기) |
+| `/skills/:skillId` | Skill 상세. 제목 · 요약 · 「AI 자동 정리」 표시 · 태그 · 이 Skill로 할 수 있는 일 · 추천 대상 · 사용 예시(복사) · 원본 Skill 설명 · 「AI로 다시 정리」/「공유 정보 수정」 · 버전 · 작성자 · SKILL.md 미리보기/원문 · 포함 파일 · 예시 파일 · 「ChatGPT용 ZIP 다운로드」/「Claude용 ZIP 다운로드」(ZIP 내려받기 + 추가 안내) · 원본 패키지 · 새 버전 · 삭제 |
 
 헤더 오른쪽은 EASY 계정이다. 비로그인이면 「로그인」(누르면 작은 로그인 창), 로그인하면 이름 · 「관리자」(ADMIN 일 때) · 「로그아웃」.
 로그인 · 로그아웃은 페이지를 새로 읽지 않고 내 MCP만 다시 읽는다.
@@ -167,11 +178,14 @@ Catalog 카드에도 「내 MCP에 등록」/「등록됨」이 있다. **내 MC
 | GET | `/api/auth/me` | EASY 로그인 상태 `{user: null}` 또는 `{user: {username, role}}` (role `USER` \| `ADMIN`) |
 | POST | `/api/auth/login` | body `{username, password}` (JSON) → `{user}` + 세션 cookie. 틀리면 401 (없는 아이디와 같은 문구) |
 | POST | `/api/auth/logout` | EASY 세션만 끝냄 → `{user: null}` |
-| GET | `/api/skills` | Skill 카드 `{id, title, description, version, author, tags, compat{chatgpt, claude}, file_count, created_at, updated_at}` |
+| GET | `/api/skills` | Skill 카드 `{id, title, description, version, author, tags, compat{chatgpt, claude}, file_count, created_at, updated_at, summary, use_cases, recommended_for, example_prompts, enrichment_source}`. `description` 은 원본 frontmatter, `summary` 는 공유용 요약(없으면 null) |
 | GET | `/api/skills/{id}` | 상세: 카드 + `main_file` · `skill_md` · `files[{path, size}]` · `examples[{path, content}]` · `warnings` · `created_by` |
 | POST | `/api/skills` | 간단히 만들기 (JSON `{id, title, description, version, author, tags, instructions, example}`) → 201. 같은 id 는 409 |
 | POST | `/api/skills/upload` | ZIP 등록 (body = ZIP, `Content-Type: application/zip`, query `title · version · author · tags` 선택) → 201 |
 | PUT | `/api/skills/{id}/package` | 같은 Skill 의 새 버전 ZIP (frontmatter name = id). 비운 표시 정보는 이전 값 |
+| POST | `/api/skills/analyze` | AI 자동 정리 미리보기 (body = ZIP, 업로드와 같은 검증) → `{package{id, description, version, author, file_count, total_bytes, warnings, compat}, suggestion{title, summary, tags, use_cases, recommended_for, example_prompts}, analysis_source}`. **저장하지 않는다**. 모델 실패 502 |
+| POST | `/api/skills/{id}/analyze` | 저장된 package 를 다시 정리한 제안 (저장하지 않는다) |
+| PATCH | `/api/skills/{id}` | 검토한 표시 정보 저장 (JSON, 보낸 칸만: `title · version · author · tags · summary · use_cases · recommended_for · example_prompts · enrichment_source`). package 파일 · id · description 은 그대로 |
 | DELETE | `/api/skills/{id}` | 삭제 → 204 |
 | GET | `/api/skills/{id}/download?target=chatgpt\|claude\|source` | ZIP 내려받기 |
 | GET | `/api/mcps` | catalog 카드 `{mcp_id, display_name, summary, category, organization, lifecycle, status, tool_count, source}`. 개발 중은 `lifecycle: "development"`, `status` · `tool_count` 가 null |
@@ -185,6 +199,8 @@ Catalog 카드에도 「내 MCP에 등록」/「등록됨」이 있다. **내 MC
 
 `/api/skills*` 는 모두 서버에서 EASY ADMIN 인지 검사한다 (비로그인 401 · ADMIN 아님 403). 화면 메뉴 숨김은 안내일 뿐이다.
 Skill ZIP 은 multipart 가 아니라 요청 body 그대로 보낸다 (`Content-Type: application/zip`, 새 dependency 없음).
+그래서 「ZIP으로 공유」는 `POST /api/skills/analyze` → (화면에서 검토) → `POST /api/skills/upload` (이름 · 버전 · 작성자) →
+`PATCH /api/skills/{id}` (태그 · 요약 · 활용 · 추천 대상 · 사용 예시) 순서로 부른다. 기존 upload API 는 그대로 쓸 수 있다.
 
 ## 책임 경계
 
@@ -500,7 +516,40 @@ MCP · Gateway · agentic_ai 와 연결되지 않는다. KRRI_ASAP orchestrator 
 - **호환 표시**: 규격 검증을 통과하면 ChatGPT · Claude 둘 다 ✓. Claude 전용 제약(name 에 anthropic/claude, description 의 `< >`)에 걸리면
   Claude 는 「확인 필요」와 이유를 보인다.
 - **저장**: metadata 는 `app/runtime_data/skills/skills.db`, 파일은 `app/runtime_data/skills/uploaded_packages/<id>/source/`.
-  repo 에 Skill 을 commit 하지 않는다. 예시 Skill 은 repo 에 넣지 않았다. 화면의 「간단히 만들기」로 바로 하나를 만들 수 있다.
+  repo 에 Skill 을 commit 하지 않는다. 화면의 「직접 만들기」로 바로 하나를 만들 수 있다. 시험용 현실적인 package 두 개
+  (`meeting-notes` 한국어 · `weekly-status-report` 영어)는 `dev/tests/app/api/services/skills/fixtures/` 에 있다
+  (시연 ZIP: 그 폴더에서 `zip -r meeting-notes.zip meeting-notes`).
+
+### AI 자동 정리 (독파모)
+
+이미 만든 Skill ZIP 을 올리면 AI 가 내용을 읽고 **조직 공유용 표시 정보**를 제안한다. 사람이 검토 · 수정한 뒤 공유한다.
+
+```text
+ZIP 업로드 → package 검증(기존 규칙 그대로) → 분석할 텍스트 고르기 → 독파모 → 결과 검증 → 화면 미리보기
+          → 사람이 확인 · 수정 → 등록(upload + PATCH) → Library 카드 · 검색 · 상세 → 원본 기반 ChatGPT / Claude ZIP
+```
+
+- **원본 불변**: AI 는 Skill 을 쓰거나 고치지 않는다. 제안은 skills.db 의 표시 정보(`summary` · `use_cases` · `recommended_for` ·
+  `example_prompts` · `enrichment_source`, 그리고 화면 이름 · 태그)로만 저장되고 SKILL.md · frontmatter · references · scripts 에 들어가지 않는다.
+  Skill ID(frontmatter `name`)와 원본 `description` 은 AI 가 다시 정하지 않는다. 작성자 · 버전은 AI 가 만들지 않는다 (frontmatter metadata 에 있으면 제안).
+  분석 · 등록 · 수정 · 다시 정리 뒤에도 export 내용이 원본과 bytes 단위로 같은지 test 로 지킨다.
+- **구조**: `services/skills/enrichment_service.py` (텍스트 고르기 · prompt · 결과 검증) → `integrations/skill_ai/skill_ai_client.py`
+  (모델 호출) → 독파모. agentic_ai 와 독립인 inference 경로다: agentic_ai 코드를 import 하지 않고 `/chat/stream`(MCP 실행 pipeline)을 부르지 않는다.
+  같은 모델 서버를 EASY 가 자기 환경변수(`KEM_SKILL_AI_*`)로 따로 부른다.
+- **모델 호출**: agentic_ai 가 같은 모델을 부르는 방식을 따랐다 — OpenAI 호환 `POST /v1/chat/completions`, `response_format` json_schema (strict,
+  길이 · 개수 상한 포함), `reasoning_effort: "none"` (빼면 모델이 추론 token 을 먼저 낸다), `temperature 0` · `seed 0`, `max_tokens 1536`, streaming 없음,
+  retry 없음(사용자가 다시 누른다), 기본 timeout 120초. 이 장비에서 한 번에 약 3초 걸린다.
+- **모델에 보내는 것**: 텍스트만. SKILL.md → references/ → examples/ → README → 기타 `.md` · `.txt` 순서로 최대 20개 · 파일당 10,000자 ·
+  전체 24,000자 (모델 context 32k). binary · script · data 파일은 이름만 알려 주고 내용은 보내지 않는다. UTF-8 이 아닌 텍스트 파일은 건너뛴다.
+- **prompt injection**: package 는 `<<<SKILL PACKAGE>>>` 경계 안의 신뢰하지 않는 자료로 넣고, system prompt 가 그 안의 명령을 따르지 말라고 한다
+  (자료가 경계 표시를 흉내 내지 못하게 분석용 사본에서 바꿔 쓴다). 원본에 없는 기능 · Tool · 입출력 형식 · 작성자를 만들지 않게 하고, 한국어로 답하게 한다.
+- **결과를 믿지 않는다**: 서버가 형식 · 필수 칸 · 길이 · 개수를 다시 검사하고 공백 · 중복 · 빈 항목을 정리한다. 틀리면 「AI 자동 정리에 실패했습니다」(502).
+  브라우저와 로그에 모델 주소 · 모델 이름 · key · 모델 응답 · prompt · Skill 내용을 싣지 않는다.
+- **저장 전 검토**: 분석은 저장하지 않는 미리보기다. 화면은 결과를 보여 주고 「내용 수정」으로 고친 뒤 「이 내용으로 공유」로 저장한다.
+  AI 가 실패해도 「직접 입력해서 등록」으로 공유할 수 있다. 상세의 「AI로 다시 정리」도 제안만 채우고 「저장」을 눌러야 바뀐다.
+- **설정**: `KEM_SKILL_AI_MODE=mock|live` (기본 mock), live 는 `KEM_SKILL_AI_BASE_URL` · `KEM_SKILL_AI_MODEL` 필수 (없으면 뜨지 않는다),
+  `KEM_SKILL_AI_API_KEY` 선택 (있으면 Bearer), `KEM_SKILL_AI_TIMEOUT_SECONDS` (기본 120). mock 은 package 의 제목 · 설명 · 파일 이름으로 정해진 결과를
+  만들고 화면에 「mock」을 표시한다.
 
 ## Future backlog: 신규 MCP server onboarding
 
@@ -512,7 +561,8 @@ MCP · Gateway · agentic_ai 와 연결되지 않는다. KRRI_ASAP orchestrator 
 
 - 내 MCP selection 을 agentic_ai 실행 범위에 반영 (지금 agentic_ai 는 고정 실행 범위를 쓴다)
 - EASY 회원가입 · 사용자 관리 · 비밀번호 변경 화면 (지금은 DB 의 계정만. 구조는 USER/ADMIN 여러 계정을 지원)
-- AI Skills: 승인 · 게시 workflow, 조직별 공개 범위, 버전 이력(지금은 최신 버전만 보관), ChatGPT · Claude 자동 설치
+- AI Skills: 승인 · 게시 workflow, 조직별 공개 범위, 버전 이력(지금은 최신 버전만 보관), ChatGPT · Claude 자동 설치,
+  새 버전 ZIP 을 올릴 때의 자동 정리 미리보기 (지금은 올린 뒤 「AI로 다시 정리」)
 - 개인 ChatGPT · Claude 에서 KRRI EASY 를 직접 쓰는 Remote MCP 연결 (provider · 기관 network 결정 보류. prototype 은 local archive branch 에 보존)
 - 로그인 시도 제한 · 감사 로그 등 production 인증 기능
 - KRRI_ASAP 로그인(Keycloak) 연동은 하지 않는다 (EASY 계정은 의도적으로 별개)

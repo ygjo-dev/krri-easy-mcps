@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import Modal from '../components/Modal'
 import AdminGate from '../skills/AdminGate'
+import EditShareInfoDialog from '../skills/EditShareInfoDialog'
 import { formatBytes, formatDateTime, saveBlob, stripFrontmatter } from '../skills/format'
 import InstallGuide from '../skills/InstallGuide'
 import MarkdownPreview from '../skills/MarkdownPreview'
+import { AiBadge, ShareInfoSections } from '../skills/ShareInfo'
 import { CompatBadges, SkillIcon, TagList } from '../skills/SkillBits'
 import type { SkillDetail, SkillTarget } from '../types/api'
 
@@ -23,6 +25,10 @@ type ProductTarget = Exclude<SkillTarget, 'source'>
 
 function SkillDetailView({ skillId }: { skillId: string }) {
   const navigate = useNavigate()
+  // 방금 공유한 Skill 이면 (등록 창에서 넘어옴) 한 번 알린다
+  const location = useLocation()
+  const [justShared] = useState(() => Boolean((location.state as { shared?: boolean } | null)?.shared))
+  const [editing, setEditing] = useState<'edit' | 'reanalyze' | null>(null)
   const [skill, setSkill] = useState<SkillDetail | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
   const [tab, setTab] = useState<Tab>('skill')
@@ -67,6 +73,12 @@ function SkillDetailView({ skillId }: { skillId: string }) {
         <span aria-current="page">{skill.title}</span>
       </nav>
 
+      {justShared && (
+        <p className="shared-notice" role="status">
+          AI Skills Library 에 공유했습니다. 구성원이 검색해서 찾고, ChatGPT · Claude 용 ZIP 을 받아 쓸 수 있습니다.
+        </p>
+      )}
+
       <div className="detail-layout">
         <div className="detail-main">
           <div className="detail-identity">
@@ -76,6 +88,7 @@ function SkillDetailView({ skillId }: { skillId: string }) {
               <div className="skill-id-row">
                 <code className="skill-id">{skill.id}</code>
                 <CompatBadges compat={skill.compat} />
+                <AiBadge source={skill.enrichment_source} />
               </div>
             </div>
           </div>
@@ -87,8 +100,31 @@ function SkillDetailView({ skillId }: { skillId: string }) {
             <div><dt>업데이트</dt><dd className="stats-small">{formatDateTime(skill.updated_at)}</dd></div>
           </dl>
 
-          <p className="detail-summary">{skill.description}</p>
+          {/* 공유용 요약(AI 자동 정리 + 검토). 없으면 원본 description */}
+          <p className="detail-summary">{skill.summary || skill.description}</p>
           <TagList tags={skill.tags} />
+
+          <section className="detail-section share-section" aria-label="공유 정보">
+            <ShareInfoSections useCases={skill.use_cases} recommendedFor={skill.recommended_for}
+              examplePrompts={skill.example_prompts} />
+            {!skill.summary && skill.use_cases.length === 0 && skill.example_prompts.length === 0 && (
+              <p className="section-note share-empty">
+                아직 AI 자동 정리 전인 Skill 입니다. 「AI로 정리하기」를 누르면 할 수 있는 일 · 추천 대상 · 사용 예시를 정리합니다.
+              </p>
+            )}
+            {skill.summary && (
+              <div className="original-desc">
+                <span>원본 Skill 설명 <span className="muted">SKILL.md frontmatter</span></span>
+                <p>{skill.description}</p>
+              </div>
+            )}
+            <div className="share-actions">
+              <button type="button" className="pill pill-ghost" onClick={() => setEditing('reanalyze')}>
+                <span aria-hidden="true">✦</span> {skill.enrichment_source === 'live' || skill.enrichment_source === 'mock' ? 'AI로 다시 정리' : 'AI로 정리하기'}
+              </button>
+              <button type="button" className="pill pill-ghost" onClick={() => setEditing('edit')}>공유 정보 수정</button>
+            </div>
+          </section>
           {/* 좁은 화면에서는 오른쪽 칸 대신 여기 (긴 미리보기 아래로 밀리지 않게) */}
           <div className="add-inline">
             <AddPanel skill={skill} downloading={downloading} error={downloadError} onDownload={download} />
@@ -161,6 +197,17 @@ function SkillDetailView({ skillId }: { skillId: string }) {
         </aside>
       </div>
 
+      {editing && (
+        <EditShareInfoDialog
+          skill={skill}
+          reanalyze={editing === 'reanalyze'}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setSkill(updated)
+            setEditing(null)
+          }}
+        />
+      )}
       {guide && (
         <InstallGuide target={guide.target} filename={guide.filename} onAgain={() => download(guide.target)} onClose={() => setGuide(null)} />
       )}
@@ -183,7 +230,7 @@ function ManageSkill({ skill, onUpdated, onDeleted }: { skill: SkillDetail; onUp
       const updated = await api.uploadSkillVersion(skill.id, file, { version })
       onUpdated(updated)
       setVersion('')
-      setMessage({ error: false, text: `v${updated.version} 으로 바꿨습니다.` })
+      setMessage({ error: false, text: `v${updated.version} 으로 바꿨습니다. 내용이 바뀌었으면 위의 「AI로 다시 정리」로 공유 정보를 고치세요.` })
     } catch (e) {
       setMessage({ error: true, text: (e as Error).message })
     } finally {

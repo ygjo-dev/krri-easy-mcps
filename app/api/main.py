@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from .integrations.agentic_ai.agentic_ai_client import AgenticAiUnavailable, make_agentic_ai_client
 from .integrations.krri_asap.gateway_client import GatewayUnavailable, make_gateway_client
 from .integrations.krri_asap.selection_client import make_selection_client
+from .integrations.skill_ai.skill_ai_client import SkillAiUnavailable, make_skill_ai_client
 from .services.ai_demo import demo_router
 from .services.ai_demo.question_service import load_demo_questions
 from .services.auth import auth_router
@@ -39,6 +40,7 @@ LIVE = "live"
 # Gateway 를 못 읽었을 때 브라우저로 나가는 문구. 원인(내부 URL · 응답 본문)은 서버 로그에만 남는다.
 GATEWAY_UNAVAILABLE_DETAIL = "Gateway 에서 MCP 정보를 가져오지 못했습니다."
 AGENTIC_AI_UNAVAILABLE_DETAIL = "AI 실행 서비스에 연결하지 못했습니다."
+SKILL_AI_UNAVAILABLE_DETAIL = "AI 자동 정리에 실패했습니다. 다시 시도하거나 직접 정보를 입력해서 등록할 수 있습니다."
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,13 @@ class Settings:
     agentic_ai_base_url: str
     # agentic 한 요청(LLM 해석 + KRRI 실행)을 기다리는 시간.
     agentic_ai_timeout_seconds: float
+    # AI Skills 자동 정리 모델(독파모, OpenAI 호환 vLLM). agentic_ai 와 따로 부른다. live 에서 base URL · model 필수.
+    skill_ai_mode: str
+    skill_ai_base_url: str
+    skill_ai_model: str
+    # 내부 vLLM 은 key 가 없다. 있으면 Bearer 로 보낸다. 로그 · 응답에 싣지 않는다.
+    skill_ai_api_key: str
+    skill_ai_timeout_seconds: float
     # EASY runtime data 폴더 (SQLite DB 3개 + Skill package 파일). KRRI_ASAP 로그인과 별개다. commit 하지 않는다.
     runtime_data_dir: Path
     # EASY 로그인 세션 수명 (시간). 지나면 다시 로그인한다.
@@ -92,6 +101,11 @@ def load_settings() -> Settings:
         gateway_cache_seconds=float(os.environ.get("KEM_GATEWAY_CACHE_SECONDS", "60")),
         agentic_ai_base_url=os.environ.get("KEM_AGENTIC_AI_BASE_URL", ""),
         agentic_ai_timeout_seconds=float(os.environ.get("KEM_AGENTIC_AI_TIMEOUT_SECONDS", "360")),
+        skill_ai_mode=os.environ.get("KEM_SKILL_AI_MODE", MOCK),
+        skill_ai_base_url=os.environ.get("KEM_SKILL_AI_BASE_URL", ""),
+        skill_ai_model=os.environ.get("KEM_SKILL_AI_MODEL", ""),
+        skill_ai_api_key=os.environ.get("KEM_SKILL_AI_API_KEY", ""),
+        skill_ai_timeout_seconds=float(os.environ.get("KEM_SKILL_AI_TIMEOUT_SECONDS", "120")),
         runtime_data_dir=Path(os.environ.get("KEM_RUNTIME_DATA_DIR", RUNTIME_DATA_DIR)),
         session_hours=float(os.environ.get("KEM_SESSION_HOURS", "168")),
         admin_username=os.environ.get("KEM_ADMIN_USERNAME", "admin"),
@@ -134,12 +148,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.warning("agentic_ai unavailable on %s: %s", request.url.path, exc)
         return JSONResponse(status_code=502, content={"detail": AGENTIC_AI_UNAVAILABLE_DETAIL})
 
+    # AI Skills 자동 정리. Skill package 에서 고른 텍스트로 library 표시 정보만 제안한다 (원본 package 는 바꾸지 않는다).
+    app.state.skill_ai = make_skill_ai_client(
+        settings.skill_ai_mode,
+        settings.skill_ai_base_url,
+        settings.skill_ai_model,
+        settings.skill_ai_api_key,
+        settings.skill_ai_timeout_seconds,
+    )
+
+    @app.exception_handler(SkillAiUnavailable)
+    async def skill_ai_unavailable(request: Request, exc: SkillAiUnavailable) -> JSONResponse:
+        # 원인 종류만 남긴다. Skill 내용 · 모델 응답 · prompt 는 로그에도 싣지 않는다.
+        logger.warning("skill AI unavailable on %s: %s", request.url.path, exc)
+        return JSONResponse(status_code=502, content={"detail": SKILL_AI_UNAVAILABLE_DETAIL})
+
     @app.get("/api/health")
     def health() -> dict:
         return {
             "status": "ok",
             "gateway": app.state.gateway.source,
             "agentic_ai": app.state.agentic_ai.source,
+            "skill_ai": app.state.skill_ai.source,
         }
 
     app.include_router(auth_router.router)

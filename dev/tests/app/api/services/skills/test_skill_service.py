@@ -5,14 +5,19 @@
 - 새 버전은 같은 frontmatter name 이어야 하고, 비운 표시 정보는 이전 값을 쓴다. 작성자를 로그인 이름(공용 admin)으로 채우지 않는다.
 - 파일은 runtime data 의 skills/uploaded_packages/<id>/source/ 에 실행 권한 없이(0644) 저장하고, 서버는 script 를 실행하지 않는다.
 - 삭제는 metadata 와 파일을 같이 지운다.
+- 공유용 표시 정보(요약 · 할 수 있는 일 · 추천 대상 · 사용 예시 · 정리 출처)는 skills.db 에만 있다.
+  AI 정리 · 수정 · 새 버전 뒤에도 export 내용은 올린 원본과 같다. 기존 DB 는 앱이 뜰 때 없는 칸만 더한다.
 """
 
 import json
 import sqlite3
 import stat
 
-from app.api.main import load_settings
-from tests.app.api.services.skills.skill_packages import SAMPLE, SKILL_MD, make_zip, upload, zip_names, zip_read
+from fastapi.testclient import TestClient
+
+from app.api.main import create_app, load_settings
+from app.api.services.skills.skill_service import SkillLibrary
+from tests.app.api.services.skills.skill_packages import SAMPLE, SKILL_MD, login, make_zip, upload, zip_names, zip_read
 
 
 def test_new_version_keeps_display_metadata_left_blank(admin):
@@ -108,3 +113,124 @@ def test_author_is_never_the_shared_admin_login(admin):
     assert body["author"] == ""
     created = admin.post("/api/skills", json={"id": "plain-skill", "description": "설명", "instructions": "1. 한다."}).json()
     assert created["author"] == ""
+
+
+# ── 공유용 표시 정보 (AI 자동 정리) ─────────────────────────────────
+
+ENRICHMENT = {
+    "summary": "회의 메모를 회의록으로 정리해 주는 Skill 입니다.",
+    "use_cases": ["회의 메모 정리", "후속 조치 추출"],
+    "recommended_for": "회의를 자주 하는 연구원",
+    "example_prompts": ["이 메모를 회의록으로 정리해줘"],
+    "enrichment_source": "live",
+}
+
+# 표 칸을 더하기 전(2026-10-02 f89ffe8) 의 skills 표 그대로.
+OLD_SCHEMA = """
+CREATE TABLE skills (
+    id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, version TEXT NOT NULL, author TEXT NOT NULL,
+    tags TEXT NOT NULL, main_file TEXT NOT NULL, file_count INTEGER NOT NULL, total_bytes INTEGER NOT NULL,
+    compat TEXT NOT NULL, warnings TEXT NOT NULL, created_by TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL
+);
+"""
+
+
+def source_contents(c) -> dict[str, bytes]:
+    data = c.get("/api/skills/meeting-notes-example/download?target=source").content
+    return {n.split("/", 1)[1]: zip_read(data, n) for n in zip_names(data)}
+
+
+def original_files() -> dict[str, bytes]:
+    return {k: v.encode() if isinstance(v, str) else v for k, v in SAMPLE.items()}
+
+
+def test_old_db_is_migrated_additively_and_old_rows_still_read():
+    settings = load_settings()
+    settings.skills_db.parent.mkdir(parents=True)
+    source = settings.skill_packages_dir / "meeting-notes-example" / "source"
+    (source / "references").mkdir(parents=True)
+    (source / "SKILL.md").write_text(SKILL_MD)
+    (source / "references" / "format.md").write_text("# 형식\n")
+    with sqlite3.connect(settings.skills_db) as db:
+        db.executescript(OLD_SCHEMA)
+        db.execute("INSERT INTO skills VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            "meeting-notes-example", "예전 Skill", "원본 설명", "1.0", "연구실", '["회의"]', "SKILL.md", 2, 100,
+            '{"chatgpt": true, "claude": true}', "[]", "admin", 1000.0, 2000.0))
+
+    admin = login(TestClient(create_app()))  # 앱이 뜰 때 migration
+    with sqlite3.connect(settings.skills_db) as db:
+        columns = [row[1] for row in db.execute("PRAGMA table_info(skills)")]
+    assert columns[:14] == ["id", "title", "description", "version", "author", "tags", "main_file", "file_count",
+                            "total_bytes", "compat", "warnings", "created_by", "created_at", "updated_at"]
+    assert columns[14:] == ["summary", "use_cases", "recommended_for", "example_prompts", "enrichment_source"]
+
+    [card] = admin.get("/api/skills").json()
+    assert (card["title"], card["description"], card["tags"], card["updated_at"]) == ("예전 Skill", "원본 설명", ["회의"], 2000.0)
+    assert (card["summary"], card["use_cases"], card["recommended_for"], card["example_prompts"],
+            card["enrichment_source"]) == (None, [], None, [], None)
+    detail = admin.get("/api/skills/meeting-notes-example").json()
+    assert detail["summary"] is None and detail["skill_md"] == SKILL_MD
+    # 다시 떠도 같다 (이미 있는 칸은 건드리지 않는다)
+    create_app()
+    assert login(TestClient(create_app())).get("/api/skills").json() == [card]
+    # 옛 행에도 표시 정보를 저장할 수 있다
+    assert admin.patch("/api/skills/meeting-notes-example", json=ENRICHMENT).json()["summary"] == ENRICHMENT["summary"]
+
+
+def test_migration_is_idempotent_on_a_fresh_db(tmp_path):
+    SkillLibrary(tmp_path / "s.db", tmp_path / "p")
+    SkillLibrary(tmp_path / "s.db", tmp_path / "p")
+    with sqlite3.connect(tmp_path / "s.db") as db:
+        columns = [row[1] for row in db.execute("PRAGMA table_info(skills)")]
+    assert len(columns) == len(set(columns)) == 19
+
+
+def test_enrichment_never_enters_exported_packages(app, admin):
+    """AI 분석 · 등록 · 표시 정보 수정 · 다시 정리 뒤에도 내려받는 package 는 올린 원본과 bytes 단위로 같다."""
+    data = make_zip(SAMPLE)
+    admin.post("/api/skills/analyze", content=data, headers={"content-type": "application/zip"})
+    upload(admin, data, title="AI 가 정한 이름", tags="회의록,요약")
+    admin.patch("/api/skills/meeting-notes-example", json={**ENRICHMENT, "title": "또 바꾼 이름"})
+    admin.post("/api/skills/meeting-notes-example/analyze")
+
+    assert source_contents(admin) == original_files()
+    for target in ("chatgpt", "claude"):
+        z = admin.get(f"/api/skills/meeting-notes-example/download?target={target}").content
+        contents = {n.split("/", 1)[1]: zip_read(z, n) for n in zip_names(z)}
+        assert contents == original_files()
+        blob = b"".join(contents.values()).decode("utf-8", errors="replace")
+        for value in ("AI 가 정한 이름", "또 바꾼 이름", ENRICHMENT["summary"], *ENRICHMENT["use_cases"],
+                      ENRICHMENT["recommended_for"], *ENRICHMENT["example_prompts"], "회의록,요약"):
+            assert value not in blob
+    stored = load_settings().skill_packages_dir / "meeting-notes-example" / "source"
+    assert {p.relative_to(stored).as_posix(): p.read_bytes() for p in stored.rglob("*") if p.is_file()} == original_files()
+
+
+def test_new_version_keeps_reviewed_info_and_replaces_only_the_package(admin):
+    upload(admin, make_zip(SAMPLE))
+    admin.patch("/api/skills/meeting-notes-example", json=ENRICHMENT)
+    v2 = {**SAMPLE, "references/format.md": "# v2\n"}
+    body = admin.put("/api/skills/meeting-notes-example/package", params={"version": "2.0"}, content=make_zip(v2)).json()
+    assert body["version"] == "2.0"
+    assert {k: body[k] for k in ENRICHMENT} == ENRICHMENT
+    assert source_contents(admin)["references/format.md"] == b"# v2\n"
+
+
+def test_delete_after_enrichment_removes_everything(admin):
+    upload(admin, make_zip(SAMPLE))
+    admin.patch("/api/skills/meeting-notes-example", json=ENRICHMENT)
+    assert admin.delete("/api/skills/meeting-notes-example").status_code == 204
+    assert admin.get("/api/skills").json() == []
+    with sqlite3.connect(load_settings().skills_db) as db:
+        assert db.execute("SELECT COUNT(*) FROM skills").fetchone()[0] == 0
+    assert upload(admin, make_zip(SAMPLE)).json()["summary"] is None  # 같은 id 로 다시 올리면 새로 시작
+
+
+def test_patch_does_not_touch_package_identity(admin):
+    upload(admin, make_zip(SAMPLE))
+    before = admin.get("/api/skills/meeting-notes-example").json()
+    after = admin.patch("/api/skills/meeting-notes-example", json={**ENRICHMENT, "title": "새 이름"}).json()
+    for key in ("id", "description", "main_file", "skill_md", "files", "examples", "compat", "warnings", "created_at",
+                "created_by", "file_count"):
+        assert after[key] == before[key]
+    assert after["updated_at"] >= before["updated_at"]

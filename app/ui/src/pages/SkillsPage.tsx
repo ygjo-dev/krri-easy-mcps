@@ -9,10 +9,16 @@ import type { SkillCard as SkillCardData } from '../types/api'
 
 // Skill 이 처음인 사람을 위한 세 단계. 「추가」는 각 서비스에서 사용자가 직접 한다.
 const STEPS = [
-  { title: 'Skill 등록', text: '반복 업무 방식을 Skill 로 만들어 연구실과 공유합니다.' },
-  { title: '필요한 패키지 다운로드', text: 'Skill 상세에서 ChatGPT용 · Claude용 ZIP 을 받습니다.' },
-  { title: 'ChatGPT · Claude 에 직접 추가', text: '지원되는 환경의 Skills 화면에 ZIP 을 올립니다. 계정 · 요금제에 따라 Skills 기능이 없을 수 있습니다.' },
+  { title: 'Skill ZIP 올리기', text: 'AI 가 내용을 읽고 제목 · 요약 · 태그 · 활용 예시를 자동으로 정리합니다. 원본은 바꾸지 않습니다.' },
+  { title: '검토하고 공유', text: '정리 결과를 확인 · 수정해 Library 에 올리면 구성원이 검색해 찾아 씁니다.' },
+  { title: 'ChatGPT · Claude 에 직접 추가', text: 'Skill 상세에서 ZIP 을 받아 각 서비스 Skills 화면에 올립니다. 계정 · 요금제에 따라 Skills 기능이 없을 수 있습니다.' },
 ]
+
+// 검색 대상: 원본 정보 + AI 자동 정리(검토) 정보
+function searchText(s: SkillCardData): string {
+  return [s.title, s.summary ?? '', s.description, s.author, s.id, s.recommended_for ?? '', ...s.tags, ...s.use_cases,
+    ...s.example_prompts].join('\n').toLowerCase()
+}
 
 export default function SkillsPage() {
   return (
@@ -48,7 +54,7 @@ function SkillsLibrary() {
     return (skills ?? []).filter(
       (s) =>
         (!tag || s.tags.includes(tag)) &&
-        (!q || [s.title, s.description, s.author, s.id, ...s.tags].some((v) => v.toLowerCase().includes(q))),
+        (!q || q.split(/\s+/).every((word) => searchText(s).includes(word))),
     )
   }, [skills, query, tag])
 
@@ -57,7 +63,10 @@ function SkillsLibrary() {
       <section className="page-head skills-head">
         <p className="eyebrow">KRRI AI Skills</p>
         <h1>AI Skills</h1>
-        <p>반복되는 업무 방식을 AI 가 그대로 재사용할 수 있도록 Skill 로 만들어 실 구성원과 공유합니다.</p>
+        <p>
+          이미 만든 AI Skill ZIP 을 올리면 AI 가 내용을 이해해 조직 공유용 설명으로 자동 정리합니다.
+          구성원은 SKILL.md 를 읽지 않아도 무슨 Skill 인지, 어디에 쓰는지, 어떻게 요청하면 되는지 바로 알 수 있습니다.
+        </p>
       </section>
 
       <ol className="skill-steps" aria-label="Skill 사용 순서">
@@ -79,7 +88,7 @@ function SkillsLibrary() {
         <div className="toolbar-controls">
           <label className="search">
             <SearchIcon />
-            <input type="search" placeholder="Skill 검색" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Skill 검색" />
+            <input type="search" placeholder="Skill 검색 (예: 회의, 보고서)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Skill 검색" />
           </label>
           <select className="select-plain" value={tag} onChange={(e) => setTag(e.target.value)} aria-label="태그">
             <option value="">전체 태그</option>
@@ -87,7 +96,7 @@ function SkillsLibrary() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-          <button type="button" className="pill pill-primary" onClick={() => setRegistering(true)}>+ 새 Skill</button>
+          <button type="button" className="pill pill-primary" onClick={() => setRegistering(true)}>+ 새 Skill 공유</button>
         </div>
       </div>
 
@@ -101,8 +110,8 @@ function SkillsLibrary() {
       {skills && skills.length === 0 && (
         <div className="state-block empty-skills">
           <p>아직 등록된 Skill 이 없습니다.</p>
-          <p className="muted">자주 반복하는 업무 하나를 골라 첫 Skill 로 만들어 보세요. 예: 회의 내용 정리, 보고서 검토 순서.</p>
-          <button type="button" className="pill pill-primary" onClick={() => setRegistering(true)}>+ 새 Skill 등록</button>
+          <p className="muted">이미 만든 Skill ZIP 하나를 올려 보세요. AI 가 공유용 설명을 정리합니다. 예: 회의 내용 정리, 보고서 검토 순서.</p>
+          <button type="button" className="pill pill-primary" onClick={() => setRegistering(true)}>+ 새 Skill 공유</button>
         </div>
       )}
       {skills && skills.length > 0 && visible.length === 0 && (
@@ -133,7 +142,7 @@ function SkillsLibrary() {
       {registering && (
         <RegisterSkillDialog
           onClose={() => setRegistering(false)}
-          onCreated={(created) => navigate(`/skills/${encodeURIComponent(created.id)}`)}
+          onCreated={(created) => navigate(`/skills/${encodeURIComponent(created.id)}`, { state: { shared: true } })}
         />
       )}
     </>

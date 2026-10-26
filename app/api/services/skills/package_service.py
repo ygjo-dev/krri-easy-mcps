@@ -155,6 +155,13 @@ def validate_package(files: dict[str, bytes]) -> Package:
     )
 
 
+def package_metadata(package: Package) -> dict[str, str]:
+    """frontmatter ``metadata`` 의 version · author (규격의 문자열 map). 없으면 빈 문자열."""
+    extra = package.frontmatter.get("metadata")
+    extra = extra if isinstance(extra, dict) else {}
+    return {key: str(extra.get(key) or "") for key in ("version", "author")}
+
+
 def _safe_parts(name: str) -> tuple[str, ...]:
     """ZIP entry 이름 → 경로 조각. 위험한 이름이면 SkillPackageError."""
     if not name or "\\" in name or "\x00" in name or any(ord(c) < 32 for c in name):
